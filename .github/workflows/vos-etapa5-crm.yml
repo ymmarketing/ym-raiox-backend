@@ -1,0 +1,25 @@
+name: VOS Etapa 5 - Guardrails CRM Essencial
+
+on:
+  push:
+    branches:
+      - vos-etapa5-crm-essencial-2026-08-08
+  pull_request:
+    paths:
+      - 'supabase/migrations/20260808140400_create_crm_essencial_v1.sql'
+      - 'supabase/migrations/20260808140500_harden_crm_essencial_v1.sql'
+      - 'supabase/migrations/20260808140600_add_crm_manual_lead_v1.sql'
+      - 'supabase/functions/motor-crm/**'
+      - 'crm-vos.html'
+      - 'testes/crm-essencial-guardrails.mjs'
+
+jobs:
+  guardrails:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Guardrails do CRM Essencial
+        run: node testes/crm-essencial-guardrails.mjs
