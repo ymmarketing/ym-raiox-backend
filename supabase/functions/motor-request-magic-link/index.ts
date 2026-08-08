@@ -22,12 +22,12 @@ function reply(status: number, body: Record<string, unknown>, origin: string | n
 function validEmail(v: unknown) {
   return typeof v === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) && v.length <= 240;
 }
-function emailHtml(actionLink: string) {
+function emailHtml(actionLink: string, requestCode: string) {
   return `<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;background:#f4f7fb;font-family:Inter,Arial,sans-serif;color:#0d2b45">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 12px;background:#f4f7fb"><tr><td align="center">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #dfe7f0;border-radius:18px;overflow:hidden">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="padding:32px 12px;background:#f4f7fb"><tr><td align="center">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background:#ffffff;border:1px solid #dfe7f0;border-radius:18px;overflow:hidden">
       <tr><td style="padding:26px 32px;background:#0d2b45;color:#fff">
         <div style="font-size:13px;font-weight:800;letter-spacing:.12em">YM MARKETING & NEGÓCIOS</div>
         <div style="font-size:28px;font-weight:800;margin-top:10px">Acesso ao Motor VOS</div>
@@ -35,8 +35,11 @@ function emailHtml(actionLink: string) {
       <tr><td style="padding:32px">
         <div style="font-size:13px;font-weight:800;color:#0866ff;letter-spacing:.08em;margin-bottom:14px">VER · ORDENAR · SUSTENTAR</div>
         <p style="font-size:16px;line-height:1.6;margin:0 0 18px">Olá!</p>
-        <p style="font-size:16px;line-height:1.6;margin:0 0 24px">Use o botão abaixo para entrar na área interna do <strong>Motor VOS</strong>. Este link é pessoal, temporário e de uso único.</p>
-        <p style="margin:0 0 26px"><a href="${actionLink}" style="display:inline-block;background:#0866ff;color:#fff;text-decoration:none;font-weight:800;padding:14px 22px;border-radius:10px">Entrar no Motor VOS</a></p>
+        <p style="font-size:16px;line-height:1.6;margin:0 0 18px">Use o botão abaixo para entrar na área interna do <strong>Motor VOS</strong>. Este link é pessoal, temporário e de uso único.</p>
+        <p style="font-size:12px;line-height:1.5;color:#61748a;margin:0 0 20px">Solicitação: <strong>${requestCode}</strong></p>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 22px"><tr><td bgcolor="#0866ff" style="border-radius:10px"><a href="${actionLink}" style="display:inline-block;background:#0866ff;color:#ffffff;text-decoration:none;font-weight:800;padding:14px 22px;border-radius:10px">Entrar no Motor VOS</a></td></tr></table>
+        <p style="font-size:13px;line-height:1.5;color:#61748a;margin:0 0 8px">Se o botão não aparecer, use este link:</p>
+        <p style="font-size:12px;line-height:1.5;margin:0 0 24px;word-break:break-all"><a href="${actionLink}" style="color:#0866ff;text-decoration:underline">${actionLink}</a></p>
         <p style="font-size:13px;line-height:1.5;color:#61748a;margin:0">Se você não solicitou este acesso, ignore este e-mail. Não compartilhe o link com outras pessoas.</p>
       </td></tr>
     </table>
@@ -94,6 +97,7 @@ Deno.serve(async (req: Request) => {
     return reply(503, { ok: false, error: "magic_link_generation_failed" }, origin);
   }
 
+  const requestCode = crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
   const actionLink = `${MOTOR_CALLBACK}?token_hash=${encodeURIComponent(tokenHash)}&type=email`;
   const resend = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -104,8 +108,9 @@ Deno.serve(async (req: Request) => {
     body: JSON.stringify({
       from: MOTOR_FROM,
       to: [email],
-      subject: "Seu acesso ao Motor VOS | YM Marketing & Negócios",
-      html: emailHtml(actionLink),
+      subject: `Acesso Motor VOS · ${requestCode} | YM Marketing & Negócios`,
+      html: emailHtml(actionLink, requestCode),
+      text: `YM MARKETING & NEGÓCIOS\nAcesso ao Motor VOS\nSolicitação: ${requestCode}\n\nUse este link pessoal, temporário e de uso único:\n${actionLink}\n\nSe você não solicitou este acesso, ignore este e-mail.`,
     }),
   });
 
@@ -119,7 +124,7 @@ Deno.serve(async (req: Request) => {
     email,
     role: access.role,
     event: "MAGIC_LINK_SENT",
-    metadata: { callback: MOTOR_CALLBACK, provider: "resend", template: "MOTOR_VOS_ACCESS_1.1", auth_mode: "token_hash" },
+    metadata: { callback: MOTOR_CALLBACK, provider: "resend", template: "MOTOR_VOS_ACCESS_1.2", auth_mode: "token_hash", request_code: requestCode },
   });
   return reply(200, { ok: true, message: "Se o e-mail estiver autorizado, o acesso será enviado." }, origin);
 });
