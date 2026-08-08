@@ -1,14 +1,14 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const STAGING_ORIGIN = "https://ym-raiox-backend-git-vos-etapa4-mo-64ac7a-ym-marketing-negocios.vercel.app";
-const MOTOR_CALLBACK = `${STAGING_ORIGIN}/motor-auth-confirm.html`;
-const ALLOWED_ORIGINS = new Set([STAGING_ORIGIN, "http://localhost:3000", "http://localhost:5173"]);
+const ORIGIN_E4 = "https://ym-raiox-backend-git-vos-etapa4-mo-64ac7a-ym-marketing-negocios.vercel.app";
+const ORIGIN_E5 = "https://ym-raiox-backend-git-vos-etapa5-cr-022cc5-ym-marketing-negocios.vercel.app";
+const ALLOWED_ORIGINS = new Set([ORIGIN_E4, ORIGIN_E5, "http://localhost:3000", "http://localhost:5173"]);
 const MOTOR_FROM = "YM Marketing & Negócios <acesso@ymnegocios.com.br>";
 
 function headers(origin: string | null) {
   return {
-    "Access-Control-Allow-Origin": origin && ALLOWED_ORIGINS.has(origin) ? origin : STAGING_ORIGIN,
+    "Access-Control-Allow-Origin": origin && ALLOWED_ORIGINS.has(origin) ? origin : ORIGIN_E4,
     "Access-Control-Allow-Headers": "content-type, apikey, x-client-info",
     "Access-Control-Allow-Methods": "POST,OPTIONS",
     "Vary": "Origin",
@@ -21,6 +21,10 @@ function reply(status: number, body: Record<string, unknown>, origin: string | n
 }
 function validEmail(v: unknown) {
   return typeof v === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) && v.length <= 240;
+}
+function callbackOrigin(origin: string | null) {
+  if (origin === ORIGIN_E4 || origin === ORIGIN_E5) return origin;
+  return ORIGIN_E4;
 }
 function emailHtml(actionLink: string, requestCode: string) {
   return `<!doctype html>
@@ -68,12 +72,7 @@ Deno.serve(async (req: Request) => {
   if (!resendApiKey) return reply(503, { ok: false, error: "resend_not_configured" }, origin);
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data: access, error: accessError } = await admin
-    .from("vos_internal_access")
-    .select("role,active")
-    .eq("email", email)
-    .maybeSingle();
-
+  const { data: access, error: accessError } = await admin.from("vos_internal_access").select("role,active").eq("email", email).maybeSingle();
   if (accessError) return reply(503, { ok: false, error: "access_check_failed" }, origin);
   if (!access || access.active !== true) {
     await admin.from("vos_access_audit").insert({ email, role: access?.role || null, event: "MAGIC_LINK_DENIED" });
@@ -86,10 +85,7 @@ Deno.serve(async (req: Request) => {
     return reply(503, { ok: false, error: "auth_provision_failed" }, origin);
   }
 
-  const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
-    type: "magiclink",
-    email,
-  });
+  const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({ type: "magiclink", email });
   const props: any = linkData?.properties || {};
   const tokenHash = props.hashed_token || props.hashedToken;
   if (linkError || !tokenHash) {
@@ -98,13 +94,11 @@ Deno.serve(async (req: Request) => {
   }
 
   const requestCode = crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
-  const actionLink = `${MOTOR_CALLBACK}?token_hash=${encodeURIComponent(tokenHash)}&type=email`;
+  const motorCallback = `${callbackOrigin(origin)}/motor-auth-confirm.html`;
+  const actionLink = `${motorCallback}?token_hash=${encodeURIComponent(tokenHash)}&type=email`;
   const resend = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: {
-      "Authorization": `Bearer ${resendApiKey}`,
-      "Content-Type": "application/json",
-    },
+    headers: { "Authorization": `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       from: MOTOR_FROM,
       to: [email],
@@ -113,7 +107,6 @@ Deno.serve(async (req: Request) => {
       text: `YM MARKETING & NEGÓCIOS\nAcesso ao Motor VOS\nSolicitação: ${requestCode}\n\nUse este link pessoal, temporário e de uso único:\n${actionLink}\n\nSe você não solicitou este acesso, ignore este e-mail.`,
     }),
   });
-
   if (!resend.ok) {
     const detail = await resend.text();
     console.error("motor resend failed", resend.status, detail.slice(0, 500));
@@ -121,10 +114,8 @@ Deno.serve(async (req: Request) => {
   }
 
   await admin.from("vos_access_audit").insert({
-    email,
-    role: access.role,
-    event: "MAGIC_LINK_SENT",
-    metadata: { callback: MOTOR_CALLBACK, provider: "resend", template: "MOTOR_VOS_ACCESS_1.2", auth_mode: "token_hash", request_code: requestCode },
+    email, role: access.role, event: "MAGIC_LINK_SENT",
+    metadata: { callback: motorCallback, provider: "resend", template: "MOTOR_VOS_ACCESS_1.3", auth_mode: "token_hash", request_code: requestCode }
   });
   return reply(200, { ok: true, message: "Se o e-mail estiver autorizado, o acesso será enviado." }, origin);
 });
