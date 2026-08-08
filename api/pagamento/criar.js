@@ -5,8 +5,12 @@
  * É isso que permite o fluxo automático: o webhook devolve essa referência,
  * e só então o acesso é liberado para AQUELE cliente.
  *
- * Body (todos opcionais, mas e-mail ajuda muito na conciliação):
- *   { nome, email, telefone, documento }
+ * Body:
+ *   { documento, nome?, email?, telefone? }
+ *
+ * documento (CPF/CNPJ) é obrigatório porque o Asaas de produção exige
+ * identificação do pagador para criação da cobrança. O documento não é
+ * persistido no storage do Raio-X.
  *
  * Resposta:
  *   { ok: true, ref, paymentUrl, status: "pending" }
@@ -78,6 +82,17 @@ export default async function handler(req, res) {
     return erroSeguro(res, 400, 'E-mail inválido.');
   }
 
+  // Em produção o Asaas exige CPF/CNPJ para criar a cobrança.
+  // Validamos somente formato/tamanho aqui; a validade cadastral é validada pelo Asaas.
+  if (documento.length !== 11 && documento.length !== 14) {
+    return erroSeguro(
+      res,
+      400,
+      'Informe um CPF ou CNPJ válido para gerar a cobrança.',
+      { causa: 'documento_ausente_ou_incompleto' }
+    );
+  }
+
   const ref = gerarRef();
   const valor = Number(process.env.PRODUCT_PRICE || 97);
   const nomeProduto = process.env.PRODUCT_NAME || 'Raio-X Estratégico';
@@ -86,6 +101,7 @@ export default async function handler(req, res) {
   try {
     // 1) grava como pending ANTES de chamar o Asaas.
     //    Se o Asaas responder e nossa gravação falhar, o webhook ainda acha a ref.
+    //    O CPF/CNPJ não é armazenado neste registro.
     await store.salvar(ref, {
       ref,
       status: STATUS.PENDING,
