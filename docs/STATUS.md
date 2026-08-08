@@ -1,0 +1,1 @@
+ETAPA 3: integração Supabase preparada em branch/staging; produção não alterada.

@@ -1,0 +1,1 @@
+Branch pronta para revisão técnica; não mesclar sem gate de produção.
