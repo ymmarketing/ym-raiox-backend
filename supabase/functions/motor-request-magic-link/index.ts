@@ -4,6 +4,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const STAGING_ORIGIN = "https://ym-raiox-backend-git-vos-etapa4-mo-64ac7a-ym-marketing-negocios.vercel.app";
 const REDIRECT_TO = `${STAGING_ORIGIN}/motor-vos.html`;
 const ALLOWED_ORIGINS = new Set([STAGING_ORIGIN, "http://localhost:3000", "http://localhost:5173"]);
+const MOTOR_FROM = "YM Marketing & Negócios <acesso@ymnegocios.com.br>";
 
 function headers(origin: string | null) {
   return {
@@ -20,6 +21,27 @@ function reply(status: number, body: Record<string, unknown>, origin: string | n
 }
 function validEmail(v: unknown) {
   return typeof v === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) && v.length <= 240;
+}
+function emailHtml(actionLink: string) {
+  return `<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;background:#f4f7fb;font-family:Inter,Arial,sans-serif;color:#0d2b45">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 12px;background:#f4f7fb"><tr><td align="center">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #dfe7f0;border-radius:18px;overflow:hidden">
+      <tr><td style="padding:26px 32px;background:#0d2b45;color:#fff">
+        <div style="font-size:13px;font-weight:800;letter-spacing:.12em">YM MARKETING & NEGÓCIOS</div>
+        <div style="font-size:28px;font-weight:800;margin-top:10px">Acesso ao Motor VOS</div>
+      </td></tr>
+      <tr><td style="padding:32px">
+        <div style="font-size:13px;font-weight:800;color:#0866ff;letter-spacing:.08em;margin-bottom:14px">VER · ORDENAR · SUSTENTAR</div>
+        <p style="font-size:16px;line-height:1.6;margin:0 0 18px">Olá!</p>
+        <p style="font-size:16px;line-height:1.6;margin:0 0 24px">Use o botão abaixo para entrar na área interna do <strong>Motor VOS</strong>. Este link é pessoal e temporário.</p>
+        <p style="margin:0 0 26px"><a href="${actionLink}" style="display:inline-block;background:#0866ff;color:#fff;text-decoration:none;font-weight:800;padding:14px 22px;border-radius:10px">Entrar no Motor VOS</a></p>
+        <p style="font-size:13px;line-height:1.5;color:#61748a;margin:0">Se você não solicitou este acesso, ignore este e-mail. Não compartilhe o link com outras pessoas.</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
 }
 
 Deno.serve(async (req: Request) => {
@@ -38,8 +60,9 @@ Deno.serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  if (!supabaseUrl || !serviceRoleKey || !anonKey) return reply(503, { ok: false, error: "auth_not_configured" }, origin);
+  const resendApiKey = Deno.env.get("RESEND_API_KEY");
+  if (!supabaseUrl || !serviceRoleKey) return reply(503, { ok: false, error: "auth_not_configured" }, origin);
+  if (!resendApiKey) return reply(503, { ok: false, error: "resend_not_configured" }, origin);
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: access, error: accessError } = await admin
@@ -60,16 +83,42 @@ Deno.serve(async (req: Request) => {
     return reply(503, { ok: false, error: "auth_provision_failed" }, origin);
   }
 
-  const publicClient = createClient(supabaseUrl, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { error: otpError } = await publicClient.auth.signInWithOtp({
+  const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+    type: "magiclink",
     email,
-    options: { shouldCreateUser: false, emailRedirectTo: REDIRECT_TO },
+    options: { redirectTo: REDIRECT_TO },
   });
-  if (otpError) {
-    console.error("motor magic link failed", otpError.message);
-    return reply(503, { ok: false, error: "magic_link_failed" }, origin);
+  const actionLink = linkData?.properties?.action_link;
+  if (linkError || !actionLink) {
+    console.error("motor magic link generation failed", linkError?.message || "missing_action_link");
+    return reply(503, { ok: false, error: "magic_link_generation_failed" }, origin);
   }
 
-  await admin.from("vos_access_audit").insert({ email, role: access.role, event: "MAGIC_LINK_SENT", metadata: { redirect_to: REDIRECT_TO } });
+  const resend = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: MOTOR_FROM,
+      to: [email],
+      subject: "Seu acesso ao Motor VOS | YM Marketing & Negócios",
+      html: emailHtml(actionLink),
+    }),
+  });
+
+  if (!resend.ok) {
+    const detail = await resend.text();
+    console.error("motor resend failed", resend.status, detail.slice(0, 500));
+    return reply(503, { ok: false, error: "resend_send_failed" }, origin);
+  }
+
+  await admin.from("vos_access_audit").insert({
+    email,
+    role: access.role,
+    event: "MAGIC_LINK_SENT",
+    metadata: { redirect_to: REDIRECT_TO, provider: "resend", template: "MOTOR_VOS_ACCESS_1.0" },
+  });
   return reply(200, { ok: true, message: "Se o e-mail estiver autorizado, o acesso será enviado." }, origin);
 });
