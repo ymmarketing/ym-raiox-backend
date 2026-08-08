@@ -59,7 +59,7 @@ assert(orderPrep.includes('automatic_priority:false'), 'Contrato da saída deve 
 assert(orderPrep.includes('human_validation_required:true'), 'Contrato da saída deve exigir validação humana');
 assert(!orderPrep.match(/priority_score|rank|ranking|automatic_priority:true|auto_priority/i), 'Preparação do ORDENAR não pode ranquear ou priorizar automaticamente');
 
-for (const marker of ['motor-ver-actions','Destino do caso','8Ps · leitura humana','Evidências','Hipóteses e testes','Conclusões humanas','Gate VER']) {
+for (const marker of ['motor-ver-actions','Destino do caso','Cobertura dos 8Ps','Evidências','Hipóteses e testes','Conclusões humanas','Gate VER']) {
   assert(motorUi.includes(marker), `Interface operacional ausente: ${marker}`);
 }
 
