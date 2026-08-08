@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Homologação Etapa 3 — YM</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f4f7fb;color:#1c2b40;margin:0;padding:24px}.wrap{max-width:620px;margin:40px auto;background:#fff;border:1px solid #dde4ee;border-radius:16px;padding:26px}.tag{display:inline-block;background:#fff3cd;color:#7a4b00;border:1px solid #f0c36d;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:700}.muted{color:#607086;line-height:1.6}.row{display:flex;gap:10px;flex-wrap:wrap}.input{flex:1;min-width:240px;padding:13px;border:1px solid #cbd5e1;border-radius:10px;font-size:16px;text-transform:uppercase}.btn{padding:13px 16px;border:0;border-radius:10px;background:#0055cc;color:#fff;font-weight:700;cursor:pointer}.btn:disabled{opacity:.55}.box{margin-top:18px;padding:14px;border-radius:10px;background:#eef4fb;white-space:pre-wrap;font-family:monospace;font-size:13px;line-height:1.5}.ok{background:#ecfdf3;color:#166534}.bad{background:#fef2f2;color:#991b1b}
+</style>
+</head>
+<body><div class="wrap">
+<span class="tag">PREVIEW TÉCNICO · SEM COBRANÇA</span>
+<h1>Homologação manual da Etapa 3</h1>
+<p class="muted">Este teste usa o backend real de produção e o Supabase de produção, mas não cria cobrança. O código é enviado apenas por HTTPS e não é salvo no GitHub nem na URL.</p>
+<p class="muted"><b>Ordem:</b> teste primeiro o código mestre — ele deve ser recusado em produção. Depois use um código manual de uso único para provar autorização + persistência.</p>
+<div class="row"><input id="code" class="input" autocomplete="off" placeholder="YM-XXXX-XXXX"><button id="run" class="btn" type="button">Executar teste</button></div>
+<div id="out" class="box">Aguardando teste.</div>
+</div>
+<script>
+const code=document.getElementById('code'),run=document.getElementById('run'),out=document.getElementById('out');
+run.addEventListener('click',async()=>{const codigo=code.value.trim().toUpperCase();if(!codigo){out.className='box bad';out.textContent='Digite um código.';return;}run.disabled=true;out.className='box';out.textContent='Executando…';try{const r=await fetch('/api/homologacao/manual',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo})});const d=await r.json().catch(()=>({}));out.className='box '+(d.ok?'ok':'bad');out.textContent=JSON.stringify(d,null,2);}catch(e){out.className='box bad';out.textContent='Falha de rede: '+e.message;}finally{run.disabled=false;code.value='';}});
+code.addEventListener('keydown',e=>{if(e.key==='Enter')run.click();});
+</script></body></html>
