@@ -25,17 +25,16 @@ Deno.serve(async(req:Request)=>{
 
   if(req.method==='GET'){
     const [{data:opps,error:oe},{data:activities,error:acte},{data:intakes,error:ie},{data:cases,error:ce}]=await Promise.all([
-      sb.from('crm_opportunities').select('id,current_stage,stage_entered_at,recommended_route,route_rationale,route_validated_by,proposal_value,source_intake_id,source_case_id,owner_email,notes,updated_at,created_at,contact:crm_contacts(id,client_ref,name,business_name,email,phone,source)').order('updated_at',{ascending:false}).limit(200),
+      sb.from('crm_opportunities').select('id,current_stage,stage_entered_at,next_action,next_action_due_at,next_action_updated_at,recommended_route,route_rationale,route_validated_by,proposal_value,source_intake_id,source_case_id,owner_email,notes,updated_at,created_at,contact:crm_contacts(id,client_ref,name,business_name,email,phone,source)').order('updated_at',{ascending:false}).limit(200),
       sb.from('crm_activities').select('id,opportunity_id,activity_type,content,due_at,completed_at,created_by,created_at').order('created_at',{ascending:false}).limit(300),
       sb.from('raiox_intakes').select('id,client_ref,score_overall,score_status,created_at').order('created_at',{ascending:false}).limit(100),
       sb.from('vos_cases').select('id,source_intake_id,client_ref,business_name,status,created_at').order('created_at',{ascending:false}).limit(100)
     ]);
     if(oe||acte||ie||ce)return reply(500,{ok:false,error:'crm_read_failed'},origin);
     const summary:Record<string,number>={};for(const s of STAGES)summary[s]=0;for(const o of opps||[])summary[o.current_stage]=(summary[o.current_stage]||0)+1;
-    const syncedIntakes=new Set((opps||[]).map((o:any)=>o.source_intake_id).filter(Boolean));
-    const linkedCases=new Set((opps||[]).map((o:any)=>o.source_case_id).filter(Boolean));
+    const syncedIntakes=new Set((opps||[]).map((o:any)=>o.source_intake_id).filter(Boolean));const linkedCases=new Set((opps||[]).map((o:any)=>o.source_case_id).filter(Boolean));
     await sb.from('vos_access_audit').insert({email:c.email,role:access.role,event:'CRM_VIEW'});
-    return reply(200,{ok:true,contract_version:'YM_CRM_ESSENCIAL_1.0',user:{email:c.email,role:access.role},stages:STAGES,routes:ROUTES,summary,opportunities:opps||[],activities:activities||[],available_intakes:(intakes||[]).filter((x:any)=>!syncedIntakes.has(x.id)),available_cases:(cases||[]).filter((x:any)=>!linkedCases.has(x.id))},origin);
+    return reply(200,{ok:true,contract_version:'YM_CRM_ESSENCIAL_1.1',user:{email:c.email,role:access.role},stages:STAGES,routes:ROUTES,summary,opportunities:opps||[],activities:activities||[],available_intakes:(intakes||[]).filter((x:any)=>!syncedIntakes.has(x.id)),available_cases:(cases||[]).filter((x:any)=>!linkedCases.has(x.id))},origin);
   }
   if(req.method!=='POST')return reply(405,{ok:false,error:'method_not_allowed'},origin);
   if(!['ADMIN','APLICADOR'].includes(access.role))return reply(403,{ok:false,error:'write_forbidden'},origin);
@@ -52,6 +51,8 @@ Deno.serve(async(req:Request)=>{
       if(!uuid(body.opportunity_id)||!STAGES.includes(body.stage))return reply(400,{ok:false,error:'invalid_stage_request'},origin);const {error}=await sb.rpc('crm_move_stage',{p_opportunity_id:body.opportunity_id,p_stage:body.stage,p_reason:text(body.reason,3000),p_actor:c.email});if(error)throw error;result={opportunity_id:body.opportunity_id,stage:body.stage};
     } else if(action==='SET_ROUTE'){
       if(!uuid(body.opportunity_id)||!ROUTES.includes(body.route))return reply(400,{ok:false,error:'invalid_route_request'},origin);const rationale=text(body.rationale,4000);if(!rationale)return reply(400,{ok:false,error:'route_rationale_required'},origin);const {error}=await sb.rpc('crm_set_route',{p_opportunity_id:body.opportunity_id,p_route:body.route,p_rationale:rationale,p_actor:c.email});if(error)throw error;result={opportunity_id:body.opportunity_id,route:body.route};
+    } else if(action==='SET_NEXT_ACTION'){
+      if(!uuid(body.opportunity_id))return reply(400,{ok:false,error:'invalid_opportunity_id'},origin);const nextAction=text(body.next_action,4000);if(!nextAction)return reply(400,{ok:false,error:'next_action_required'},origin);const due=body.due_at||null;const {error}=await sb.rpc('crm_set_next_action',{p_opportunity_id:body.opportunity_id,p_next_action:nextAction,p_due_at:due,p_actor:c.email});if(error)throw error;result={opportunity_id:body.opportunity_id,next_action:nextAction,due_at:due};
     } else if(action==='ADD_ACTIVITY'){
       if(!uuid(body.opportunity_id)||!ACTIVITY_TYPES.includes(body.activity_type))return reply(400,{ok:false,error:'invalid_activity'},origin);const content=text(body.content,6000);if(!content)return reply(400,{ok:false,error:'activity_content_required'},origin);const {data,error}=await sb.from('crm_activities').insert({opportunity_id:body.opportunity_id,activity_type:body.activity_type,content,due_at:body.due_at||null,completed_at:body.completed_at||null,created_by:c.email}).select().single();if(error)throw error;result=data;
     } else return reply(400,{ok:false,error:'unsupported_action'},origin);
