@@ -1,0 +1,1 @@
+Branch técnica isolada para a Etapa 3. Não deve ser mesclada em produção sem homologação integrada e GO explícito de produção.
