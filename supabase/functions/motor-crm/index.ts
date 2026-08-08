@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const STAGING_ORIGIN="https://ym-raiox-backend-git-vos-etapa5-cr-ym-marketing-negocios.vercel.app";
+const STAGING_ORIGIN="https://ym-raiox-backend-git-vos-etapa5-cr-022cc5-ym-marketing-negocios.vercel.app";
 const FALLBACK_ORIGIN="https://ym-raiox-backend-git-vos-etapa4-mo-64ac7a-ym-marketing-negocios.vercel.app";
 const ALLOWED_ORIGINS=new Set([STAGING_ORIGIN,FALLBACK_ORIGIN,"http://localhost:3000","http://localhost:5173"]);
 const STAGES=['LEAD_MAPEADO','LEITURA_EM_PRODUCAO','LEITURA_ENVIADA','FOLLOW_UP','CONVERSA_AGENDADA','RAIOX_OFERTADO','RAIOX_PAGO','RAIOX_ENTREGUE','ROTA_RECOMENDADA','PROPOSTA','GANHO','PERDIDO','IMPLANTACAO'];
