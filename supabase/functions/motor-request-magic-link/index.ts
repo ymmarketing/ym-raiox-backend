@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const STAGING_ORIGIN = "https://ym-raiox-backend-git-vos-etapa4-mo-64ac7a-ym-marketing-negocios.vercel.app";
-const MOTOR_CALLBACK = `${STAGING_ORIGIN}/motor-vos.html`;
+const MOTOR_CALLBACK = `${STAGING_ORIGIN}/motor-auth-confirm.html`;
 const ALLOWED_ORIGINS = new Set([STAGING_ORIGIN, "http://localhost:3000", "http://localhost:5173"]);
 const MOTOR_FROM = "YM Marketing & Negócios <acesso@ymnegocios.com.br>";
 
