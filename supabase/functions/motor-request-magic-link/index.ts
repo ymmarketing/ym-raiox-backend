@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const STAGING_ORIGIN = "https://ym-raiox-backend-git-vos-etapa4-mo-64ac7a-ym-marketing-negocios.vercel.app";
-const REDIRECT_TO = `${STAGING_ORIGIN}/motor-vos.html`;
+const MOTOR_CALLBACK = `${STAGING_ORIGIN}/motor-vos.html`;
 const ALLOWED_ORIGINS = new Set([STAGING_ORIGIN, "http://localhost:3000", "http://localhost:5173"]);
 const MOTOR_FROM = "YM Marketing & Negócios <acesso@ymnegocios.com.br>";
 
@@ -35,7 +35,7 @@ function emailHtml(actionLink: string) {
       <tr><td style="padding:32px">
         <div style="font-size:13px;font-weight:800;color:#0866ff;letter-spacing:.08em;margin-bottom:14px">VER · ORDENAR · SUSTENTAR</div>
         <p style="font-size:16px;line-height:1.6;margin:0 0 18px">Olá!</p>
-        <p style="font-size:16px;line-height:1.6;margin:0 0 24px">Use o botão abaixo para entrar na área interna do <strong>Motor VOS</strong>. Este link é pessoal e temporário.</p>
+        <p style="font-size:16px;line-height:1.6;margin:0 0 24px">Use o botão abaixo para entrar na área interna do <strong>Motor VOS</strong>. Este link é pessoal, temporário e de uso único.</p>
         <p style="margin:0 0 26px"><a href="${actionLink}" style="display:inline-block;background:#0866ff;color:#fff;text-decoration:none;font-weight:800;padding:14px 22px;border-radius:10px">Entrar no Motor VOS</a></p>
         <p style="font-size:13px;line-height:1.5;color:#61748a;margin:0">Se você não solicitou este acesso, ignore este e-mail. Não compartilhe o link com outras pessoas.</p>
       </td></tr>
@@ -86,14 +86,15 @@ Deno.serve(async (req: Request) => {
   const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
     type: "magiclink",
     email,
-    options: { redirectTo: REDIRECT_TO },
   });
-  const actionLink = linkData?.properties?.action_link;
-  if (linkError || !actionLink) {
-    console.error("motor magic link generation failed", linkError?.message || "missing_action_link");
+  const props: any = linkData?.properties || {};
+  const tokenHash = props.hashed_token || props.hashedToken;
+  if (linkError || !tokenHash) {
+    console.error("motor magic link generation failed", linkError?.message || `missing_token_hash:${Object.keys(props).join(',')}`);
     return reply(503, { ok: false, error: "magic_link_generation_failed" }, origin);
   }
 
+  const actionLink = `${MOTOR_CALLBACK}?token_hash=${encodeURIComponent(tokenHash)}&type=email`;
   const resend = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -118,7 +119,7 @@ Deno.serve(async (req: Request) => {
     email,
     role: access.role,
     event: "MAGIC_LINK_SENT",
-    metadata: { redirect_to: REDIRECT_TO, provider: "resend", template: "MOTOR_VOS_ACCESS_1.0" },
+    metadata: { callback: MOTOR_CALLBACK, provider: "resend", template: "MOTOR_VOS_ACCESS_1.1", auth_mode: "token_hash" },
   });
   return reply(200, { ok: true, message: "Se o e-mail estiver autorizado, o acesso será enviado." }, origin);
 });
