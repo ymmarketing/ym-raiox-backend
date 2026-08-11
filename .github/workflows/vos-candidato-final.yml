@@ -5,11 +5,16 @@ on:
     branches:
       - vos-etapa5-crm-essencial-2026-08-08
     paths:
+      - 'MOTOR/**'
       - 'VOS/**'
       - 'CRM/**'
-      - 'motor-auth-confirm.html'
-      - 'crm-auth-confirm.html'
+      - 'interno/**'
+      - 'Identidade/**'
+      - 'quemsomos/**'
+      - 'areadocliente/**'
+      - 'assets/internal-shell.*'
       - 'vercel.json'
+      - 'supabase/functions/motor-request-magic-link/**'
       - 'supabase/functions/motor-dashboard/**'
       - 'supabase/functions/motor-case-bundle/**'
       - 'supabase/functions/create-vos-case/**'
@@ -20,12 +25,16 @@ on:
       - 'supabase/migrations/20260811174542_restore_service_role_crm_dml_v1.sql'
       - 'supabase/migrations/20260811174631_restore_service_role_internal_dml_v2.sql'
       - 'supabase/migrations/20260811174712_restore_service_role_relation_tables_v3.sql'
+      - 'supabase/migrations/20260811183000_extend_crm_visual_profile_v1.sql'
       - 'testes/candidato-final-guardrails.mjs'
       - '.github/workflows/vos-candidato-final.yml'
   pull_request:
     paths:
-      - 'VOS/**'
+      - 'MOTOR/**'
       - 'CRM/**'
+      - 'interno/**'
+      - 'assets/internal-shell.*'
+      - 'vercel.json'
       - 'supabase/functions/**'
       - 'supabase/migrations/**'
       - 'testes/candidato-final-guardrails.mjs'
