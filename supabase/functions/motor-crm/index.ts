@@ -8,6 +8,10 @@ const ALLOWED_ORIGINS=new Set([STAGING_ORIGIN,E4_ORIGIN,PROD_ORIGIN,"http://loca
 const STAGES=['LEAD_MAPEADO','LEITURA_EM_PRODUCAO','LEITURA_ENVIADA','FOLLOW_UP','CONVERSA_AGENDADA','RAIOX_OFERTADO','RAIOX_PAGO','RAIOX_ENTREGUE','ROTA_RECOMENDADA','PROPOSTA','GANHO','PERDIDO','IMPLANTACAO'];
 const ROUTES=['AVULSO','FUNDACAO','NEGOCIO_DO_ZERO'];
 const ACTIVITY_TYPES=['NOTA','FOLLOW_UP','CONVERSA','PROPOSTA','ENTREGA','OUTRA'];
+const READING_STATUSES=['NAO_INICIADA','EM_PRODUCAO','PRONTA','ENVIADA','NAO_SE_APLICA'];
+const CONTACT_STATUSES=['NAO_INICIADO','MENSAGEM_ENVIADA','RESPONDEU','CONVERSA_AGENDADA','SEM_RETORNO','NAO_INTERESSADO'];
+const READING_REACHED=new Set(['LEITURA_ENVIADA','FOLLOW_UP','CONVERSA_AGENDADA','RAIOX_OFERTADO','RAIOX_PAGO','RAIOX_ENTREGUE','ROTA_RECOMENDADA','PROPOSTA','GANHO','IMPLANTACAO']);
+const RAIOX_REACHED=new Set(['RAIOX_ENTREGUE','ROTA_RECOMENDADA','PROPOSTA','GANHO','IMPLANTACAO']);
 function cors(origin:string|null){const allow=origin&&ALLOWED_ORIGINS.has(origin)?origin:STAGING_ORIGIN;return{"Access-Control-Allow-Origin":allow,"Access-Control-Allow-Headers":"authorization, apikey, content-type, x-client-info","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Vary":"Origin","Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"};}
 function reply(status:number,body:Record<string,unknown>,origin:string|null){return new Response(JSON.stringify(body),{status,headers:cors(origin)});}
 function claims(req:Request){try{const t=(req.headers.get('authorization')||'').replace(/^Bearer\s+/i,'');const p=t.split('.')[1];if(!p)return null;const n=p.replace(/-/g,'+').replace(/_/g,'/');const j=JSON.parse(atob(n+'='.repeat((4-n.length%4)%4)));const email=String(j.email||'').trim().toLowerCase(),sub=String(j.sub||'');return email&&sub?{email,sub}:null;}catch{return null;}}
@@ -36,9 +40,13 @@ Deno.serve(async(req:Request)=>{
     ]);
     if(oe||acte||he||ie||ce){console.error('crm read',oe||acte||he||ie||ce);return reply(500,{ok:false,error:'crm_read_failed'},origin);}
     const summary:Record<string,number>={};for(const s of STAGES)summary[s]=0;for(const o of opps||[])summary[o.current_stage]=(summary[o.current_stage]||0)+1;
+    const readingReachedIds=new Set<string>();const raioxReachedIds=new Set<string>();
+    for(const h of history||[]){if(READING_REACHED.has(h.to_stage))readingReachedIds.add(h.opportunity_id);if(RAIOX_REACHED.has(h.to_stage))raioxReachedIds.add(h.opportunity_id);}
+    for(const o of opps||[]){if(o.initial_reading_status==='ENVIADA'||READING_REACHED.has(o.current_stage))readingReachedIds.add(o.id);if(RAIOX_REACHED.has(o.current_stage))raioxReachedIds.add(o.id);}
+    const kpis={total:(opps||[]).length,lead_mapeado:summary.LEAD_MAPEADO||0,reading_sent:readingReachedIds.size,raiox_delivered:raioxReachedIds.size,won_or_implementation:(summary.GANHO||0)+(summary.IMPLANTACAO||0)};
     const syncedIntakes=new Set((opps||[]).map((o:any)=>o.source_intake_id).filter(Boolean));const linkedCases=new Set((opps||[]).map((o:any)=>o.source_case_id).filter(Boolean));
-    await sb.from('vos_access_audit').insert({email:c.email,role:access.role,event:'CRM_VIEW',metadata:{contract:'YM_CRM_ESSENCIAL_1.3'}});
-    return reply(200,{ok:true,contract_version:'YM_CRM_ESSENCIAL_1.3',user:{email:c.email,role:access.role},stages:STAGES,routes:ROUTES,summary,opportunities:opps||[],activities:activities||[],stage_history:history||[],available_intakes:(intakes||[]).filter((x:any)=>!syncedIntakes.has(x.id)),available_cases:(cases||[]).filter((x:any)=>!linkedCases.has(x.id))},origin);
+    await sb.from('vos_access_audit').insert({email:c.email,role:access.role,event:'CRM_VIEW',metadata:{contract:'YM_CRM_ESSENCIAL_1.4'}});
+    return reply(200,{ok:true,contract_version:'YM_CRM_ESSENCIAL_1.4',user:{email:c.email,role:access.role},stages:STAGES,routes:ROUTES,reading_statuses:READING_STATUSES,contact_statuses:CONTACT_STATUSES,summary,kpis,opportunities:opps||[],activities:activities||[],stage_history:history||[],available_intakes:(intakes||[]).filter((x:any)=>!syncedIntakes.has(x.id)),available_cases:(cases||[]).filter((x:any)=>!linkedCases.has(x.id))},origin);
   }
   if(req.method!=='POST')return reply(405,{ok:false,error:'method_not_allowed'},origin);
   if(!['ADMIN','APLICADOR'].includes(access.role))return reply(403,{ok:false,error:'write_forbidden'},origin);
@@ -61,10 +69,10 @@ Deno.serve(async(req:Request)=>{
     } else if(action==='ADD_ACTIVITY'){
       if(!uuid(body.opportunity_id)||!ACTIVITY_TYPES.includes(body.activity_type))return reply(400,{ok:false,error:'invalid_activity'},origin);const content=text(body.content,6000);if(!content)return reply(400,{ok:false,error:'activity_content_required'},origin);const {data,error}=await sb.from('crm_activities').insert({opportunity_id:body.opportunity_id,activity_type:body.activity_type,content,due_at:body.due_at||null,completed_at:body.completed_at||null,created_by:c.email}).select().single();if(error)throw error;result=data;
     } else if(action==='SET_INITIAL_READING'){
-      if(!uuid(body.opportunity_id))return reply(400,{ok:false,error:'invalid_opportunity_id'},origin);const link=text(body.initial_reading_url,2000);if(link&&!isHttp(link))return reply(400,{ok:false,error:'initial_reading_url_must_be_http'},origin);
-      const patch={initial_reading_status:text(body.initial_reading_status,120)||null,initial_reading_url:link||null,initial_reading_date:nullableDate(body.initial_reading_date),updated_by:c.email,updated_at:new Date().toISOString()};const {data,error}=await sb.from('crm_opportunities').update(patch).eq('id',body.opportunity_id).select().single();if(error)throw error;result=data;
+      if(!uuid(body.opportunity_id))return reply(400,{ok:false,error:'invalid_opportunity_id'},origin);const status=text(body.initial_reading_status,120);if(status&&!READING_STATUSES.includes(status))return reply(400,{ok:false,error:'invalid_initial_reading_status'},origin);const link=text(body.initial_reading_url,2000);if(link&&!isHttp(link))return reply(400,{ok:false,error:'initial_reading_url_must_be_http'},origin);
+      const patch={initial_reading_status:status||null,initial_reading_url:link||null,initial_reading_date:nullableDate(body.initial_reading_date),updated_by:c.email,updated_at:new Date().toISOString()};const {data,error}=await sb.from('crm_opportunities').update(patch).eq('id',body.opportunity_id).select().single();if(error)throw error;result=data;
     } else if(action==='SET_CONTACT_STATUS'){
-      if(!uuid(body.opportunity_id))return reply(400,{ok:false,error:'invalid_opportunity_id'},origin);const patch={contact_status:text(body.contact_status,160)||null,contact_date:nullableDate(body.contact_date),contact_result:text(body.contact_result,1500)||null,updated_by:c.email,updated_at:new Date().toISOString()};const {data,error}=await sb.from('crm_opportunities').update(patch).eq('id',body.opportunity_id).select().single();if(error)throw error;result=data;
+      if(!uuid(body.opportunity_id))return reply(400,{ok:false,error:'invalid_opportunity_id'},origin);const status=text(body.contact_status,160);if(status&&!CONTACT_STATUSES.includes(status))return reply(400,{ok:false,error:'invalid_contact_status'},origin);const patch={contact_status:status||null,contact_date:nullableDate(body.contact_date),contact_result:text(body.contact_result,1500)||null,updated_by:c.email,updated_at:new Date().toISOString()};const {data,error}=await sb.from('crm_opportunities').update(patch).eq('id',body.opportunity_id).select().single();if(error)throw error;result=data;
     } else if(action==='UPDATE_PROFILE'){
       if(!uuid(body.opportunity_id))return reply(400,{ok:false,error:'invalid_opportunity_id'},origin);const {data:opp,error:opErr}=await sb.from('crm_opportunities').select('contact_id').eq('id',body.opportunity_id).maybeSingle();if(opErr)throw opErr;if(!opp)return reply(404,{ok:false,error:'opportunity_not_found'},origin);
       const urlFields=['website_url','linkedin_url','instagram_url'];for(const f of urlFields){const v=text(body[f],2000);if(v&&!isHttp(v))return reply(400,{ok:false,error:`${f}_must_be_http`},origin);}
