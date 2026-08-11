@@ -21,6 +21,7 @@ on:
       - 'supabase/functions/motor-ver-actions/**'
       - 'supabase/functions/motor-order-actions/**'
       - 'supabase/functions/motor-crm/**'
+      - 'supabase/functions/motor-source/**'
       - 'supabase/migrations/20260811130848_add_vos_order_human_sequence_v1.sql'
       - 'supabase/migrations/20260811174542_restore_service_role_crm_dml_v1.sql'
       - 'supabase/migrations/20260811174631_restore_service_role_internal_dml_v2.sql'
