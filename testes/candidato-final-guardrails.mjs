@@ -9,6 +9,7 @@ const login=fs.readFileSync('interno/index.html','utf8');
 const reset=fs.readFileSync('interno/redefinir/index.html','utf8');
 const order=fs.readFileSync('supabase/functions/motor-order-actions/index.ts','utf8');
 const crmApi=fs.readFileSync('supabase/functions/motor-crm/index.ts','utf8');
+const sourceApi=fs.readFileSync('supabase/functions/motor-source/index.ts','utf8');
 const authApi=fs.readFileSync('supabase/functions/motor-request-magic-link/index.ts','utf8');
 const orderMigration=fs.readFileSync('supabase/migrations/20260811130848_add_vos_order_human_sequence_v1.sql','utf8');
 const crmVisualMigration=fs.readFileSync('supabase/migrations/20260811183000_extend_crm_visual_profile_v1.sql','utf8');
@@ -44,6 +45,16 @@ assert(crmApi.includes('initial_reading_url'),'API CRM não expõe arquivo/link 
 assert(crmApi.includes('crm_stage_history'),'API CRM não expõe histórico de etapas');
 assert(!crmApi.match(/anthropic|openai|gemini|claude|auto.?route|route.?score/i),'CRM não pode decidir rota por IA/heurística');
 
+for(const action of ['GET_RAIOX_DETAIL','GET_CASE_SOURCE','CREATE_CONTINGENCY_CASE']) assert(sourceApi.includes(`action===\"${action}\"`),`API de fonte/contingência sem ação: ${action}`);
+for(const mode of ['RAIOX_LEGADO','CLIENTE_RECORRENTE_SEM_RAIOX','CONTINGENCIA_MANUAL']) assert(sourceApi.includes(mode),`Contingência sem origem ${mode}`);
+assert(sourceApi.includes('canonical_questionnaire_completed:false'),'Contingência precisa declarar que questionário canônico não foi concluído');
+assert(sourceApi.includes('human_validation_required:true'),'Contingência precisa preservar validação humana');
+assert(sourceApi.includes('route_signal:null'),'Contingência não pode criar rota automática');
+assert(!sourceApi.match(/anthropic|openai|gemini|claude|auto.?route|priority_score/i),'Contingência não pode decidir análise/rota por IA');
+assert(shell.includes('Criar caso manual no MOTOR'),'CRM precisa oferecer contingência manual');
+assert(shell.includes('Ver Raio-X / fonte'),'CRM/MOTOR precisam expor a fonte original');
+assert(shell.includes('GET_RAIOX_DETAIL')&&shell.includes('GET_CASE_SOURCE'),'Shell precisa consultar respostas/fonte do Raio-X');
+
 assert(login.includes('signInWithPassword'),'Login interno precisa usar e-mail + senha');
 assert(login.includes('Primeiro acesso ou esqueci minha senha'),'Login deve manter recuperação segura sem Magic Link no uso diário');
 assert(reset.includes('updateUser({password:p1})'),'Tela de definição precisa salvar a senha');
@@ -67,7 +78,7 @@ assert(authApi.includes('/interno/redefinir'),'Recuperação precisa cair na tel
 
 console.log(JSON.stringify({
   ok:true,
-  suite:'YM_CANDIDATO_FINAL_GUARDRAILS_1.3',
+  suite:'YM_CANDIDATO_FINAL_GUARDRAILS_1.4',
   motor:'PASS',crm:'PASS',ordenar:'PASS',routes:'PASS',password_auth:'PASS',shared_session:'PASS',
-  reading_traceability:'PASS',visual_shell:'PASS',permissions:'PASS',human_authority:'PASS'
+  reading_traceability:'PASS',contingency_intake:'PASS',source_visibility:'PASS',visual_shell:'PASS',permissions:'PASS',human_authority:'PASS'
 }));
