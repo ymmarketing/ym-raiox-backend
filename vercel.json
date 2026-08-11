@@ -5,11 +5,26 @@
       "maxDuration": 30
     }
   },
+  "rewrites": [
+    { "source": "/VOS", "destination": "/VOS/index.html" },
+    { "source": "/VOS/", "destination": "/VOS/index.html" },
+    { "source": "/CRM", "destination": "/CRM/index.html" },
+    { "source": "/CRM/", "destination": "/CRM/index.html" }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    },
+    {
+      "source": "/(VOS|CRM)(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
         { "key": "Referrer-Policy", "value": "no-referrer" }
       ]
     }
