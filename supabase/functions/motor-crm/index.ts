@@ -24,17 +24,18 @@ Deno.serve(async(req:Request)=>{
   if(ae)return reply(503,{ok:false,error:'access_check_failed'},origin);if(!access||access.active!==true)return reply(403,{ok:false,error:'forbidden'},origin);
 
   if(req.method==='GET'){
-    const [{data:opps,error:oe},{data:activities,error:acte},{data:intakes,error:ie},{data:cases,error:ce}]=await Promise.all([
-      sb.from('crm_opportunities').select('id,current_stage,stage_entered_at,next_action,next_action_due_at,next_action_updated_at,recommended_route,route_rationale,route_validated_by,proposal_value,source_intake_id,source_case_id,owner_email,notes,updated_at,created_at,contact:crm_contacts(id,client_ref,name,business_name,email,phone,source)').order('updated_at',{ascending:false}).limit(200),
-      sb.from('crm_activities').select('id,opportunity_id,activity_type,content,due_at,completed_at,created_by,created_at').order('created_at',{ascending:false}).limit(300),
+    const [{data:opps,error:oe},{data:activities,error:acte},{data:history,error:he},{data:intakes,error:ie},{data:cases,error:ce}]=await Promise.all([
+      sb.from('crm_opportunities').select('id,current_stage,stage_entered_at,next_action,next_action_due_at,next_action_updated_at,recommended_route,route_rationale,route_validated_by,route_validated_at,proposal_value,source_intake_id,source_case_id,owner_email,notes,updated_at,created_at,contact:crm_contacts(id,client_ref,name,business_name,email,phone,source)').order('updated_at',{ascending:false}).limit(200),
+      sb.from('crm_activities').select('id,opportunity_id,activity_type,content,due_at,completed_at,created_by,created_at').order('created_at',{ascending:false}).limit(500),
+      sb.from('crm_stage_history').select('id,opportunity_id,from_stage,to_stage,reason,changed_by,changed_at').order('changed_at',{ascending:false}).limit(800),
       sb.from('raiox_intakes').select('id,client_ref,score_overall,score_status,created_at').order('created_at',{ascending:false}).limit(100),
       sb.from('vos_cases').select('id,source_intake_id,client_ref,business_name,status,created_at').order('created_at',{ascending:false}).limit(100)
     ]);
-    if(oe||acte||ie||ce)return reply(500,{ok:false,error:'crm_read_failed'},origin);
+    if(oe||acte||he||ie||ce)return reply(500,{ok:false,error:'crm_read_failed'},origin);
     const summary:Record<string,number>={};for(const s of STAGES)summary[s]=0;for(const o of opps||[])summary[o.current_stage]=(summary[o.current_stage]||0)+1;
     const syncedIntakes=new Set((opps||[]).map((o:any)=>o.source_intake_id).filter(Boolean));const linkedCases=new Set((opps||[]).map((o:any)=>o.source_case_id).filter(Boolean));
     await sb.from('vos_access_audit').insert({email:c.email,role:access.role,event:'CRM_VIEW'});
-    return reply(200,{ok:true,contract_version:'YM_CRM_ESSENCIAL_1.1',user:{email:c.email,role:access.role},stages:STAGES,routes:ROUTES,summary,opportunities:opps||[],activities:activities||[],available_intakes:(intakes||[]).filter((x:any)=>!syncedIntakes.has(x.id)),available_cases:(cases||[]).filter((x:any)=>!linkedCases.has(x.id))},origin);
+    return reply(200,{ok:true,contract_version:'YM_CRM_ESSENCIAL_1.2',user:{email:c.email,role:access.role},stages:STAGES,routes:ROUTES,summary,opportunities:opps||[],activities:activities||[],stage_history:history||[],available_intakes:(intakes||[]).filter((x:any)=>!syncedIntakes.has(x.id)),available_cases:(cases||[]).filter((x:any)=>!linkedCases.has(x.id))},origin);
   }
   if(req.method!=='POST')return reply(405,{ok:false,error:'method_not_allowed'},origin);
   if(!['ADMIN','APLICADOR'].includes(access.role))return reply(403,{ok:false,error:'write_forbidden'},origin);
