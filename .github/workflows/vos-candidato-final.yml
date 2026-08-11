@@ -10,17 +10,24 @@ on:
       - 'motor-auth-confirm.html'
       - 'crm-auth-confirm.html'
       - 'vercel.json'
+      - 'supabase/functions/motor-dashboard/**'
+      - 'supabase/functions/motor-case-bundle/**'
+      - 'supabase/functions/create-vos-case/**'
+      - 'supabase/functions/motor-ver-actions/**'
       - 'supabase/functions/motor-order-actions/**'
       - 'supabase/functions/motor-crm/**'
-      - 'supabase/migrations/20260811101500_add_vos_order_human_sequence_v1.sql'
+      - 'supabase/migrations/20260811130848_add_vos_order_human_sequence_v1.sql'
+      - 'supabase/migrations/20260811174542_restore_service_role_crm_dml_v1.sql'
+      - 'supabase/migrations/20260811174631_restore_service_role_internal_dml_v2.sql'
+      - 'supabase/migrations/20260811174712_restore_service_role_relation_tables_v3.sql'
       - 'testes/candidato-final-guardrails.mjs'
       - '.github/workflows/vos-candidato-final.yml'
   pull_request:
     paths:
       - 'VOS/**'
       - 'CRM/**'
-      - 'supabase/functions/motor-order-actions/**'
-      - 'supabase/functions/motor-crm/**'
+      - 'supabase/functions/**'
+      - 'supabase/migrations/**'
       - 'testes/candidato-final-guardrails.mjs'
 
 jobs:
