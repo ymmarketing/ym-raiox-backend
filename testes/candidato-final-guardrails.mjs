@@ -21,14 +21,16 @@ const areaCliente=fs.readFileSync('areadocliente/index.html','utf8');
 
 for(const marker of ['MOTOR VOS','Cobertura dos 8Ps','Hipóteses e testes','Gate VER','ORDENAR','motor-order-actions']) assert(motor.includes(marker),`MOTOR final sem marcador: ${marker}`);
 assert(motor.includes('/CRM'),'MOTOR precisa navegar para CRM');
-assert(motor.includes('YM.shell(\'MOTOR\'')||motor.includes("YM.shell('MOTOR'"),'MOTOR não usa shell universal');
+assert(motor.includes("YM.shell('MOTOR'"),'MOTOR não usa shell universal');
 assert(!motor.match(/automatic_priority\s*:\s*true|auto.?rank|priority_score/i),'MOTOR não pode priorizar automaticamente');
 
-for(const marker of ['Clientes e oportunidades','Lista de leads e clientes','Leitura Inicial','Próxima ação obrigatória','SET_INITIAL_READING','Validar rota humana','Histórico']) assert(crm.includes(marker),`CRM final sem marcador: ${marker}`);
-assert(crm.includes('class="chev"'),'CRM precisa ter seta/expansão por lead');
-assert(crm.includes('id="search"')&&crm.includes('id="fStage"')&&crm.includes('id="fClass"'),'CRM precisa permitir busca e filtros');
+for(const marker of ['Clientes e oportunidades','Lista visual conectando prospecção','Leitura Inicial','Próxima ação','SET_INITIAL_READING','Rota humana','Histórico conectado']) assert(crm.includes(marker),`CRM final sem marcador: ${marker}`);
+assert(crm.includes('class="arrow"'),'CRM precisa ter seta/expansão por lead');
+assert(crm.includes('id="search"')&&crm.includes('id="stageFilter"')&&crm.includes('id="classFilter"'),'CRM precisa permitir busca e filtros');
 assert(crm.includes('/MOTOR?case='),'CRM precisa abrir o caso conectado no MOTOR');
-assert(crm.includes("x!=='ROTA_RECOMENDADA'"),'Interface deve impedir salto manual livre para ROTA_RECOMENDADA');
+assert(crm.includes("s=>s!=='ROTA_RECOMENDADA'"),'Interface deve impedir salto manual livre para ROTA_RECOMENDADA');
+assert(crm.includes('initial_reading_url')&&crm.includes('Link do arquivo'),'CRM precisa permitir rastreabilidade da Leitura Inicial');
+assert(crm.includes("YM.shell('CRM'"),'CRM não usa shell universal');
 
 for(const action of ['CREATE_CANDIDATE','VALIDATE_CANDIDATE','REJECT_CANDIDATE']) assert(order.includes(action),`API ORDENAR sem ação: ${action}`);
 assert(order.includes('sequence_order'),'ORDENAR sem sequência humana');
@@ -65,7 +67,7 @@ assert(authApi.includes('/interno/redefinir'),'Recuperação precisa cair na tel
 
 console.log(JSON.stringify({
   ok:true,
-  suite:'YM_CANDIDATO_FINAL_GUARDRAILS_1.2',
+  suite:'YM_CANDIDATO_FINAL_GUARDRAILS_1.3',
   motor:'PASS',crm:'PASS',ordenar:'PASS',routes:'PASS',password_auth:'PASS',shared_session:'PASS',
   reading_traceability:'PASS',visual_shell:'PASS',permissions:'PASS',human_authority:'PASS'
 }));
