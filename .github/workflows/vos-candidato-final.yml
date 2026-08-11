@@ -1,0 +1,39 @@
+name: VOS Candidato Final - Guardrails Integrados
+
+on:
+  push:
+    branches:
+      - vos-etapa5-crm-essencial-2026-08-08
+    paths:
+      - 'VOS/**'
+      - 'CRM/**'
+      - 'motor-auth-confirm.html'
+      - 'crm-auth-confirm.html'
+      - 'vercel.json'
+      - 'supabase/functions/motor-order-actions/**'
+      - 'supabase/functions/motor-crm/**'
+      - 'supabase/migrations/20260811101500_add_vos_order_human_sequence_v1.sql'
+      - 'testes/candidato-final-guardrails.mjs'
+      - '.github/workflows/vos-candidato-final.yml'
+  pull_request:
+    paths:
+      - 'VOS/**'
+      - 'CRM/**'
+      - 'supabase/functions/motor-order-actions/**'
+      - 'supabase/functions/motor-crm/**'
+      - 'testes/candidato-final-guardrails.mjs'
+
+jobs:
+  candidato-final:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Guardrails do Motor VOS
+        run: node testes/motor-vos-guardrails.mjs
+      - name: Guardrails do CRM Essencial
+        run: node testes/crm-essencial-guardrails.mjs
+      - name: Guardrails integrados do candidato final
+        run: node testes/candidato-final-guardrails.mjs
