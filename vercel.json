@@ -5,12 +5,48 @@
       "maxDuration": 30
     }
   },
+  "redirects": [
+    { "source": "/VOS", "destination": "/MOTOR", "permanent": false },
+    { "source": "/VOS/", "destination": "/MOTOR", "permanent": false }
+  ],
+  "rewrites": [
+    { "source": "/CRM", "destination": "/CRM/index.html" },
+    { "source": "/CRM/", "destination": "/CRM/index.html" },
+    { "source": "/MOTOR", "destination": "/MOTOR/index.html" },
+    { "source": "/MOTOR/", "destination": "/MOTOR/index.html" },
+    { "source": "/Identidade", "destination": "/Identidade/index.html" },
+    { "source": "/Identidade/", "destination": "/Identidade/index.html" },
+    { "source": "/interno", "destination": "/interno/index.html" },
+    { "source": "/interno/", "destination": "/interno/index.html" },
+    { "source": "/interno/redefinir", "destination": "/interno/redefinir/index.html" },
+    { "source": "/interno/redefinir/", "destination": "/interno/redefinir/index.html" },
+    { "source": "/quemsomos", "destination": "/quemsomos/index.html" },
+    { "source": "/quemsomos/", "destination": "/quemsomos/index.html" },
+    { "source": "/areadocliente", "destination": "/areadocliente/index.html" },
+    { "source": "/areadocliente/", "destination": "/areadocliente/index.html" }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    },
+    {
+      "source": "/(CRM|MOTOR|Identidade|interno)(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    },
+    {
+      "source": "/(quemsomos|areadocliente)(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
       ]
     }
   ]

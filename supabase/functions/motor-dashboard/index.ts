@@ -1,9 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const STAGING_ORIGIN = "https://ym-raiox-backend-git-vos-etapa4-mo-64ac7a-ym-marketing-negocios.vercel.app";
-const ALLOWED_ORIGINS = new Set([STAGING_ORIGIN,"http://localhost:3000","http://localhost:5173"]);
-function cors(origin:string|null){return{"Access-Control-Allow-Origin":origin&&ALLOWED_ORIGINS.has(origin)?origin:STAGING_ORIGIN,"Access-Control-Allow-Headers":"authorization, apikey, content-type, x-client-info","Access-Control-Allow-Methods":"GET,OPTIONS","Vary":"Origin","Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"};}
+const ORIGIN_E4="https://ym-raiox-backend-git-vos-etapa4-mo-64ac7a-ym-marketing-negocios.vercel.app";
+const ORIGIN_E5="https://ym-raiox-backend-git-vos-etapa5-cr-022cc5-ym-marketing-negocios.vercel.app";
+const ALLOWED_ORIGINS=new Set([ORIGIN_E4,ORIGIN_E5,"http://localhost:3000","http://localhost:5173"]);
+function cors(origin:string|null){return{"Access-Control-Allow-Origin":origin&&ALLOWED_ORIGINS.has(origin)?origin:ORIGIN_E4,"Access-Control-Allow-Headers":"authorization, apikey, content-type, x-client-info","Access-Control-Allow-Methods":"GET,OPTIONS","Vary":"Origin","Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"};}
 function reply(status:number,body:Record<string,unknown>,origin:string|null){return new Response(JSON.stringify(body),{status,headers:cors(origin)});}
 function claims(req:Request){try{const t=(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");const p=t.split(".")[1];if(!p)return null;const n=p.replace(/-/g,"+").replace(/_/g,"/");const j=JSON.parse(atob(n+"=".repeat((4-n.length%4)%4)));const email=String(j.email||"").trim().toLowerCase();const sub=String(j.sub||"");return email&&sub?{email,sub}:null;}catch{return null;}}
 
