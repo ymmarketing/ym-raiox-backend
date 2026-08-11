@@ -13,6 +13,7 @@ const sourceApi=fs.readFileSync('supabase/functions/motor-source/index.ts','utf8
 const authApi=fs.readFileSync('supabase/functions/motor-request-magic-link/index.ts','utf8');
 const orderMigration=fs.readFileSync('supabase/migrations/20260811130848_add_vos_order_human_sequence_v1.sql','utf8');
 const crmVisualMigration=fs.readFileSync('supabase/migrations/20260811183000_extend_crm_visual_profile_v1.sql','utf8');
+const statusMigration=fs.readFileSync('supabase/migrations/20260811194000_normalize_crm_status_vocab_v1.sql','utf8');
 const perms=fs.readFileSync('supabase/migrations/20260811174631_restore_service_role_internal_dml_v2.sql','utf8');
 const relationPerms=fs.readFileSync('supabase/migrations/20260811174712_restore_service_role_relation_tables_v3.sql','utf8');
 const vercel=fs.readFileSync('vercel.json','utf8');
@@ -32,6 +33,9 @@ assert(crm.includes('/MOTOR?case='),'CRM precisa abrir o caso conectado no MOTOR
 assert(crm.includes("s=>s!=='ROTA_RECOMENDADA'"),'Interface deve impedir salto manual livre para ROTA_RECOMENDADA');
 assert(crm.includes('initial_reading_url')&&crm.includes('Link do arquivo'),'CRM precisa permitir rastreabilidade da Leitura Inicial');
 assert(crm.includes("YM.shell('CRM'"),'CRM não usa shell universal');
+assert(crm.includes('id="ris_${o.id}" class="ym-select"'),'Status da Leitura Inicial precisa ser lista');
+assert(crm.includes('id="cs_${o.id}" class="ym-select"'),'Status de contato precisa ser lista');
+assert(crm.includes('crm.kpis')&&crm.includes('reading_sent')&&crm.includes('raiox_delivered'),'Big numbers precisam usar KPIs cumulativos da API');
 
 for(const action of ['CREATE_CANDIDATE','VALIDATE_CANDIDATE','REJECT_CANDIDATE']) assert(order.includes(action),`API ORDENAR sem ação: ${action}`);
 assert(order.includes('sequence_order'),'ORDENAR sem sequência humana');
@@ -41,6 +45,8 @@ assert(order.includes('human_validation_required:true'),'Contrato ORDENAR não e
 assert(!order.match(/anthropic|openai|gemini|claude|ranking|priority_score/i),'API ORDENAR não pode usar IA/ranking automático');
 
 for(const action of ['SET_INITIAL_READING','SET_CONTACT_STATUS','UPDATE_PROFILE','SET_NEXT_ACTION','SET_ROUTE']) assert(crmApi.includes(`action==='${action}'`),`API CRM sem ação: ${action}`);
+assert(crmApi.includes('READING_STATUSES')&&crmApi.includes('CONTACT_STATUSES'),'API CRM precisa validar vocabulários fechados');
+assert(crmApi.includes('READING_REACHED')&&crmApi.includes('RAIOX_REACHED'),'API CRM precisa manter KPIs históricos/cumulativos');
 assert(crmApi.includes('initial_reading_url'),'API CRM não expõe arquivo/link da Leitura Inicial');
 assert(crmApi.includes('crm_stage_history'),'API CRM não expõe histórico de etapas');
 assert(!crmApi.match(/anthropic|openai|gemini|claude|auto.?route|route.?score/i),'CRM não pode decidir rota por IA/heurística');
@@ -66,6 +72,8 @@ assert(orderMigration.includes('sequence_order')&&orderMigration.includes('uq_vo
 for(const col of ['initial_reading_url','external_key','public_signal','opportunity_to_validate','recommended_channel']) assert(crmVisualMigration.includes(col),`Migration CRM visual sem ${col}`);
 assert(crmVisualMigration.includes('crm_bulk_upsert_leads'),'Migration CRM sem importação idempotente');
 assert(crmVisualMigration.includes("grant execute on function public.crm_create_manual_lead")&&crmVisualMigration.includes('to service_role'),'Criação manual de lead precisa de permissão do service_role');
+assert(statusMigration.includes('crm_initial_reading_status_check')&&statusMigration.includes('crm_contact_status_check'),'Migration precisa bloquear status fora das listas');
+assert(statusMigration.includes('NAO_INICIADA')&&statusMigration.includes('ENVIADA')&&statusMigration.includes('MENSAGEM_ENVIADA'),'Vocabulários de status não estão congelados');
 assert(perms.includes('revoke all on table public.crm_opportunities from anon, authenticated'),'CRM deve permanecer fechado para acesso direto');
 assert(relationPerms.includes('vos_entry_evidence')&&relationPerms.includes('vos_test_evidence'),'Tabelas de relação do MOTOR sem permissão interna');
 
@@ -78,7 +86,7 @@ assert(authApi.includes('/interno/redefinir'),'Recuperação precisa cair na tel
 
 console.log(JSON.stringify({
   ok:true,
-  suite:'YM_CANDIDATO_FINAL_GUARDRAILS_1.4',
+  suite:'YM_CANDIDATO_FINAL_GUARDRAILS_1.5',
   motor:'PASS',crm:'PASS',ordenar:'PASS',routes:'PASS',password_auth:'PASS',shared_session:'PASS',
-  reading_traceability:'PASS',contingency_intake:'PASS',source_visibility:'PASS',visual_shell:'PASS',permissions:'PASS',human_authority:'PASS'
+  closed_status_lists:'PASS',cumulative_kpis:'PASS',reading_traceability:'PASS',contingency_intake:'PASS',source_visibility:'PASS',visual_shell:'PASS',permissions:'PASS',human_authority:'PASS'
 }));
