@@ -1,0 +1,32 @@
+name: VOS Etapa 4 - Guardrails do Motor
+
+on:
+  push:
+    branches:
+      - vos-etapa4-motor-web-2026-08-08
+    paths:
+      - 'supabase/**'
+      - 'testes/motor-vos-guardrails.mjs'
+      - 'docs/ETAPA4_ARQUITETURA_MOTOR_WEB_VOS_V1.md'
+      - 'package.json'
+      - '.github/workflows/vos-etapa4-guardrails.yml'
+  pull_request:
+    paths:
+      - 'supabase/**'
+      - 'testes/motor-vos-guardrails.mjs'
+      - 'docs/ETAPA4_ARQUITETURA_MOTOR_WEB_VOS_V1.md'
+      - 'package.json'
+
+jobs:
+  motor-guardrails:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Syntax Edge Function source
+        run: |
+          node --check testes/motor-vos-guardrails.mjs
+      - name: Motor VOS static contract
+        run: npm run test:motor
