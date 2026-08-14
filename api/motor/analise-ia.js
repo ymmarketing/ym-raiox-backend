@@ -9,7 +9,9 @@
 const SUPABASE_URL = 'https://srzdikgztpdtwbggwniz.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_OGZsWJSj2noU3Dd78pk48g__eEKE3xT';
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+const GATEWAY_URL = 'https://ai-gateway.vercel.sh/v1/chat/completions';
+const DIRECT_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+const GATEWAY_MODEL = process.env.MOTOR_AI_MODEL || 'openai/gpt-5.6-sol';
 const MAX_TOKENS = Number(process.env.ANTHROPIC_MAX_TOKENS || 4000);
 const PROD_ORIGIN = 'https://ymnegocios.com.br';
 
@@ -47,7 +49,6 @@ function tokenFrom(req) {
 
 async function authorizeInternal(token) {
   if (!token) return false;
-  // A própria função interna do MOTOR confirma JWT + allowlist/role.
   const r = await fetch(`${SUPABASE_URL}/functions/v1/motor-cases`, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -164,12 +165,84 @@ Devolva ESTRITAMENTE JSON válido, sem markdown, no formato:
 }`;
 
 function parseJson(text) {
-  const cleaned = String(text || '')
+  const raw = String(text || '').trim();
+  const cleaned = raw
     .replace(/^```json\s*/i, '')
     .replace(/^```\s*/, '')
     .replace(/```$/, '')
     .trim();
-  return JSON.parse(cleaned);
+  try { return JSON.parse(cleaned); } catch {}
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start >= 0 && end > start) return JSON.parse(cleaned.slice(start, end + 1));
+  throw new Error('JSON ausente');
+}
+
+function validateAnalyses(parsed, context) {
+  const validIds = new Set(context.hypotheses.map((h) => h.id));
+  return Array.isArray(parsed?.analyses)
+    ? parsed.analyses.filter((x) => validIds.has(String(x?.hypothesis_id || '')) && x?.analysis)
+    : [];
+}
+
+async function callGateway(userPrompt) {
+  const gatewayToken = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;
+  if (!gatewayToken) throw new Error('gateway_auth_unavailable');
+
+  const r = await fetch(GATEWAY_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${gatewayToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: GATEWAY_MODEL,
+      models: ['anthropic/claude-opus-5', 'google/gemini-3.6-flash'],
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.2,
+      max_tokens: Math.min(MAX_TOKENS, 6000),
+      stream: false,
+    }),
+  });
+
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '');
+    console.error('MOTOR IA Gateway', r.status, txt.slice(0, 700));
+    throw new Error(`gateway_http_${r.status}`);
+  }
+  const data = await r.json();
+  const text = String(data?.choices?.[0]?.message?.content || '').trim();
+  return { parsed: parseJson(text), model: data?.model || GATEWAY_MODEL, provider: 'vercel_ai_gateway' };
+}
+
+async function callAnthropic(userPrompt) {
+  if (!process.env.ANTHROPIC_API_KEY) throw new Error('anthropic_not_configured');
+  const ai = await fetch(ANTHROPIC_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: DIRECT_MODEL,
+      max_tokens: Math.min(MAX_TOKENS, 6000),
+      temperature: 0.2,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userPrompt }],
+    }),
+  });
+  if (!ai.ok) {
+    const txt = await ai.text().catch(() => '');
+    console.error('MOTOR IA Anthropic', ai.status, txt.slice(0, 700));
+    throw new Error(`anthropic_http_${ai.status}`);
+  }
+  const data = await ai.json();
+  const text = (data.content || []).map((b) => (b.type === 'text' ? b.text : '')).join('').trim();
+  return { parsed: parseJson(text), model: DIRECT_MODEL, provider: 'anthropic_direct' };
 }
 
 export default async function handler(req, res) {
@@ -177,7 +250,6 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   const token = tokenFrom(req);
   if (!(await authorizeInternal(token))) return res.status(401).json({ ok: false, error: 'internal_session_required' });
-  if (!process.env.ANTHROPIC_API_KEY) return res.status(503).json({ ok: false, error: 'ai_not_configured' });
 
   let body = req.body;
   if (typeof body === 'string') {
@@ -186,51 +258,52 @@ export default async function handler(req, res) {
   if (!body || typeof body !== 'object') return res.status(400).json({ ok: false, error: 'invalid_body' });
 
   const context = compactCase(body);
-  if (!context.case && !context.id) return res.status(400).json({ ok: false, error: 'case_required' });
+  if (!context.id) return res.status(400).json({ ok: false, error: 'case_required' });
   if (!context.hypotheses.length) return res.status(400).json({ ok: false, error: 'hypotheses_required' });
 
   const userPrompt = `Analise o caso abaixo. Concentre-se nas hipóteses recebidas e produza uma leitura realmente útil para o aplicador.\n\nCASO MOTOR VOS:\n${JSON.stringify(context, null, 2)}`;
 
+  let result = null;
+  const failures = [];
+
+  // Preferência: Vercel AI Gateway com OIDC do próprio projeto. Evita dependência
+  // do saldo de um único provedor e permite fallback de modelos no Gateway.
   try {
-    const ai = await fetch(ANTHROPIC_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: Math.min(MAX_TOKENS, 6000),
-        temperature: 0.2,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userPrompt }],
-      }),
-    });
-
-    if (!ai.ok) {
-      const txt = await ai.text().catch(() => '');
-      console.error('MOTOR IA Anthropic', ai.status, txt.slice(0, 500));
-      return res.status(502).json({ ok: false, error: 'ai_provider_failed', status: ai.status });
-    }
-
-    const data = await ai.json();
-    const text = (data.content || []).map((b) => (b.type === 'text' ? b.text : '')).join('').trim();
-    let parsed;
-    try { parsed = parseJson(text); } catch (e) {
-      console.error('MOTOR IA JSON inválido', String(e), text.slice(0, 600));
-      return res.status(502).json({ ok: false, error: 'ai_invalid_json' });
-    }
-
-    const validIds = new Set(context.hypotheses.map((h) => h.id));
-    const analyses = Array.isArray(parsed?.analyses)
-      ? parsed.analyses.filter((x) => validIds.has(String(x?.hypothesis_id || '')) && x?.analysis)
-      : [];
-    if (!analyses.length) return res.status(502).json({ ok: false, error: 'ai_empty_analysis' });
-
-    return res.status(200).json({ ok: true, model: MODEL, analyses, contract_version: 'VOS_AI_ANALYSIS_1.0' });
+    result = await callGateway(userPrompt);
   } catch (e) {
-    console.error('MOTOR IA exception', e);
-    return res.status(502).json({ ok: false, error: 'ai_request_failed' });
+    failures.push(String(e?.message || e));
   }
+
+  // Fallback secundário: Anthropic direto, útil quando o Gateway estiver indisponível
+  // e a conta Anthropic tiver saldo.
+  if (!result) {
+    try {
+      result = await callAnthropic(userPrompt);
+    } catch (e) {
+      failures.push(String(e?.message || e));
+    }
+  }
+
+  if (!result) {
+    console.error('MOTOR IA providers failed', failures);
+    return res.status(502).json({ ok: false, error: 'ai_provider_failed', failures });
+  }
+
+  let analyses;
+  try {
+    analyses = validateAnalyses(result.parsed, context);
+  } catch (e) {
+    console.error('MOTOR IA validação falhou', String(e));
+    return res.status(502).json({ ok: false, error: 'ai_invalid_json' });
+  }
+
+  if (!analyses.length) return res.status(502).json({ ok: false, error: 'ai_empty_analysis' });
+
+  return res.status(200).json({
+    ok: true,
+    model: result.model,
+    provider: result.provider,
+    analyses,
+    contract_version: 'VOS_AI_ANALYSIS_1.1',
+  });
 }
