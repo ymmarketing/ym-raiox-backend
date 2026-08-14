@@ -13,6 +13,7 @@
     "test:motor": "node testes/motor-vos-guardrails.mjs",
     "test": "npm run test:local && npm run test:motor"
   },
-  "dependencies": {},
-  "devDependencies": {}
+  "dependencies": {
+    "@vercel/oidc": "^3.8.4"
+  }
 }

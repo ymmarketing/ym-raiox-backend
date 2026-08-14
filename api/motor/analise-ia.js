@@ -1,3 +1,4 @@
+import { getVercelOidcToken } from '@vercel/oidc';
 /**
  * POST /api/motor/analise-ia
  *
@@ -186,7 +187,7 @@ function validateAnalyses(parsed, context) {
 }
 
 async function callGateway(userPrompt) {
-  const gatewayToken = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;
+  const gatewayToken = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN || await getVercelOidcToken();
   if (!gatewayToken) throw new Error('gateway_auth_unavailable');
 
   const r = await fetch(GATEWAY_URL, {
