@@ -1,0 +1,32 @@
+name: Patch MOTOR AI billing message
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-motor-ai-billing-message.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch provider error message
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('api/motor/analise-ia.js')
+          s=p.read_text()
+          old="""  if (!result) {\n    console.error('MOTOR IA providers failed', failures);\n    return res.status(502).json({ ok: false, error: 'ai_provider_failed', failures });\n  }"""
+          new="""  if (!result) {\n    console.error('MOTOR IA providers failed', failures);\n    const billingBlocked = failures.includes('gateway_http_403') && failures.includes('anthropic_http_400');\n    if (billingBlocked) {\n      return res.status(503).json({\n        ok: false,\n        error: 'IA indisponível: o Vercel AI Gateway precisa de um cartão validado para liberar os créditos e a Anthropic está sem saldo.',\n        code: 'ai_billing_required',\n        failures,\n      });\n    }\n    return res.status(502).json({ ok: false, error: 'ai_provider_failed', failures });\n  }"""
+          if old not in s:
+              raise SystemExit('target block not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add api/motor/analise-ia.js
+          git commit -m 'MOTOR: explica bloqueio de cobrança da IA'
+          git push
