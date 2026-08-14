@@ -1,0 +1,37 @@
+name: Patch MOTOR OIDC auth
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/patch-motor-oidc.yml']
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install official Vercel OIDC helper
+        run: npm install @vercel/oidc --save
+      - name: Patch MOTOR AI gateway auth
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('api/motor/analise-ia.js')
+          s=p.read_text()
+          imp="import { getVercelOidcToken } from '@vercel/oidc';\n"
+          if imp not in s:
+              s=imp+s
+          old="""  const gatewayToken = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;\n  if (!gatewayToken) throw new Error('gateway_auth_unavailable');"""
+          new="""  const gatewayToken = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN || await getVercelOidcToken();\n  if (!gatewayToken) throw new Error('gateway_auth_unavailable');"""
+          if old not in s:
+              raise SystemExit('gateway auth block not found')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add api/motor/analise-ia.js package.json package-lock.json
+          git commit -m 'MOTOR: usa helper oficial Vercel OIDC no AI Gateway'
+          git push
