@@ -287,6 +287,15 @@ export default async function handler(req, res) {
 
   if (!result) {
     console.error('MOTOR IA providers failed', failures);
+    const billingBlocked = failures.includes('gateway_http_403') && failures.includes('anthropic_http_400');
+    if (billingBlocked) {
+      return res.status(503).json({
+        ok: false,
+        error: 'IA indisponível: o Vercel AI Gateway precisa de um cartão validado para liberar os créditos e a Anthropic está sem saldo.',
+        code: 'ai_billing_required',
+        failures,
+      });
+    }
     return res.status(502).json({ ok: false, error: 'ai_provider_failed', failures });
   }
 
