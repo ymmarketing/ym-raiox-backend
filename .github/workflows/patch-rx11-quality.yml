@@ -1,4 +1,4 @@
-name: Patch RX_REPORT_1.1 quality rules
+name: Finalize RX_REPORT_1.1 branch
 on:
   push:
     branches:
@@ -8,32 +8,20 @@ on:
 permissions:
   contents: write
 jobs:
-  patch:
+  cleanup:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reforçar interpretação e uso de insumos
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          p=Path('lib/raiox-report-v1-1.js')
-          s=p.read_text(encoding='utf-8')
-          anchor='''- Use linguagem simples e executiva. Evite jargão, frases motivacionais e generalidades.\n\nRASTREABILIDADE'''
-          replacement='''- Use linguagem simples e executiva. Evite jargão, frases motivacionais e generalidades.\n- RX25 (capacidade/estrutura operacional), RX26 (patrimônio), RX27 (dificuldade percebida) e RX28 (tentativas anteriores) são insumos de contexto e investigação: devem ser considerados nas conexões quando trouxerem informação substantiva, mas NUNCA viram nota.\n- RX27 é PERCEPÇÃO DO CLIENTE, não causa comprovada. Compare essa percepção com os demais dados e explicite convergência ou diferença quando isso gerar insight.\n- RX28 deve evitar recomendações preguiçosas que apenas mandem repetir algo que o cliente já tentou sem explicar o que seria observado de forma diferente.\n\nQUALIDADE MÍNIMA DA LEITURA\n- business_reading.summary deve integrar pelo menos 3 insumos diferentes quando houver dados suficientes; não liste respostas em sequência.\n- destination.strategic_destination deve traduzir a meta em mudança de estado do negócio (ex.: dependência → autonomia, dispersão → processo, intenção → evidência), somente quando sustentado.\n- Toda cross_reading do tipo leitura deve usar pelo menos 2 sources e explicar a RELAÇÃO entre elas; se houver apenas um dado, não é leitura cruzada.\n- Não escreva frases genéricas como “isso merece atenção”, “há oportunidade de melhorar” ou “vale organizar melhor” sem dizer qual tensão foi observada e por que ela importa.\n- Se duas notas/respostas parecerem contraditórias, não escolha uma como certa: explique qual dimensão cada uma mede e qual hipótese de diferença deve ser validada.\n- Uma seção não deve repetir a mesma ideia já explicada em outra. Se o tema reaparecer, acrescente uma camada nova de significado.\n\nRASTREABILIDADE'''
-          if anchor not in s: raise SystemExit('anchor de qualidade não encontrado')
-          s=s.replace(anchor,replacement,1)
-          p.write_text(s,encoding='utf-8')
-          PY
-      - name: Validar
+      - name: Validar arquivos finais
         run: |
           node --check lib/raiox-report-v1-1.js
+          node --check api/raiox/interpretar.js
           grep -q 'RX27 é PERCEPÇÃO DO CLIENTE' lib/raiox-report-v1-1.js
-          grep -q 'Toda cross_reading do tipo leitura deve usar pelo menos 2 sources' lib/raiox-report-v1-1.js
-      - name: Commit
+          grep -q 'Nunca copie uma resposta aberta como texto final' lib/raiox-report-v1-1.js
+      - name: Remover artefatos temporários de desenvolvimento
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib/raiox-report-v1-1.js
-          git diff --cached --quiet && exit 0
-          git commit -m 'Raio-X: reforça profundidade interpretativa e uso dos insumos'
+          git rm -f .github/workflows/check-rx-report-v11.yml .github/workflows/patch-rx11-quality.yml docs/RX_REPORT_1_1_BACKEND_CHECK_OK.md
+          git commit -m 'chore: remove artefatos temporários do RX_REPORT_1.1'
           git push
