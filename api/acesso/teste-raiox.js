@@ -6,13 +6,14 @@
  * HTML oficial da YM em modo de teste e adiciona apenas um guardrail: falha de
  * persistência não pode impedir a exibição do relatório.
  */
+import crypto from 'node:crypto';
 import { aplicarCors } from '../../lib/cors.js';
 import { store, STATUS, temRedis } from '../../lib/store.js';
 import { comparacaoSegura, log, texto, limitarTaxa, sha256Hex, refValida } from '../../lib/security.js';
 
 const TEST_SALT = 'YM-RAIOX-TEST-2026';
 const TEST_TOKEN_HASHES = [
-  '2d5be0faf2df82958779871adae27c5f766ef61acad0119b7d0cfe3eb444408a',
+  'aa81d5ab686e6c53640dd062ffdbe69e4afcf1ce41d860646956d5d868639c0f',
   'd06e579a71a8ae56809ffe9cdd8223e72dfa21f71bd62ef215d7eb84447fad4c'
 ];
 const RAIOX_SOURCE = 'https://ymnegocios.com.br/raio-x.html';
@@ -105,7 +106,9 @@ export default async function handler(req, res) {
   const tokenHash = TEST_TOKEN_HASHES.find((h) => comparacaoSegura(hash, h));
   if (!tokenHash) return htmlError(res, 403, 'Link de teste inválido', 'Este token não foi reconhecido.');
 
-  const newRef = `ym_raiox_${Date.now()}_teste${Math.random().toString(16).slice(2,10)}`;
+  // Usa o formato "mestre" já aceito pelos validadores internos, mas a origem
+  // no store continua identificada exclusivamente como teste_execucao.
+  const newRef = `ym_raiox_${Date.now()}_mestre${crypto.randomBytes(6).toString('hex')}`;
   const reservou = await store.marcarCodigoResgatado(tokenHash, newRef);
   if (!reservou) return htmlError(res, 403, 'Link já utilizado', 'Este link de teste já foi usado.');
 
