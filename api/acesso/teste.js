@@ -12,6 +12,7 @@ import { comparacaoSegura, log, texto, limitarTaxa, sha256Hex } from '../../lib/
 
 const TEST_SALT = 'YM-RAIOX-TEST-2026';
 const TEST_TOKEN_HASHES = [
+  '921d3f8fa2c66e966b25a85b5def8b99df25e86f0c74380437c6cd77430bc69d',
   '35bbf42ba5982175139bb90c9f375d9314a1b2a7f05021017638ded028e976f7',
   '5dcd49bceacd2ed22fdb93270c702a1828432e88c0e99b19995d1a2c123ab117'
 ];
