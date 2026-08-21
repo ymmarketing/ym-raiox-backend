@@ -1,20 +1,20 @@
 /**
  * GET/POST /api/acesso/teste
  *
- * Acesso de uso único para teste end-to-end do Raio-X oficial.
- * Não cria cobrança no Asaas. Cria uma referência aprovada no mesmo store
- * usado pelo fluxo real, permitindo testar questionário, análise, relatório
- * e persistência sem gerar receita.
- *
- * GET  ?token=...  -> cria ref aprovada e redireciona para o Raio-X oficial.
- * POST { token }   -> mantém resposta JSON para testes técnicos.
+ * Acessos de uso único para teste end-to-end do Raio-X oficial.
+ * Não cria cobrança no Asaas. Cada token cria uma referência aprovada no
+ * mesmo store usado pelo fluxo real, permitindo testar questionário, análise,
+ * relatório e persistência sem gerar receita.
  */
 import { aplicarCors } from '../../lib/cors.js';
 import { store, STATUS, temRedis } from '../../lib/store.js';
 import { comparacaoSegura, log, texto, limitarTaxa, sha256Hex } from '../../lib/security.js';
 
 const TEST_SALT = 'YM-RAIOX-TEST-2026';
-const TEST_TOKEN_HASH = '448cdfd521004f25d83d5ede7a79734ae872ab26024061a7e4f1f532e4368630';
+const TEST_TOKEN_HASHES = [
+  '35bbf42ba5982175139bb90c9f375d9314a1b2a7f05021017638ded028e976f7',
+  '5dcd49bceacd2ed22fdb93270c702a1828432e88c0e99b19995d1a2c123ab117'
+];
 const RAIOX_URL = 'https://ymnegocios.com.br/raio-x.html';
 
 export default async function handler(req, res) {
@@ -50,13 +50,14 @@ export default async function handler(req, res) {
   if (!token) return res.status(400).json({ ok: false, error: 'Token ausente.' });
 
   const hash = await sha256Hex(TEST_SALT + token);
-  if (!comparacaoSegura(hash, TEST_TOKEN_HASH)) {
+  const tokenHash = TEST_TOKEN_HASHES.find((h) => comparacaoSegura(hash, h));
+  if (!tokenHash) {
     log('warn', 'Token de teste inválido.', { ip });
     return res.status(403).json({ ok: false, error: 'Token inválido.' });
   }
 
   const ref = `ym_raiox_${Date.now()}_teste${Math.random().toString(16).slice(2, 10)}`;
-  const reservou = await store.marcarCodigoResgatado(TEST_TOKEN_HASH, ref);
+  const reservou = await store.marcarCodigoResgatado(tokenHash, ref);
   if (!reservou) {
     return res.status(403).json({ ok: false, error: 'Este link de teste já foi utilizado.', jaUsado: true });
   }
