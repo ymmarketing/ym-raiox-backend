@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Produtos — Central YM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="/assets/internal-shell.css">
+<style>
+.products-toolbar{display:grid;grid-template-columns:minmax(220px,1fr) minmax(190px,.42fr);gap:10px;margin:16px 0}.products-table{background:#fff;border:1px solid var(--ym-line);border-radius:16px;overflow:hidden;box-shadow:0 6px 20px rgba(15,42,67,.05)}.product-row,.product-head,.product-total{display:grid;grid-template-columns:minmax(220px,1.5fr) minmax(150px,.7fr) minmax(150px,.7fr);gap:12px;align-items:center;padding:13px 16px}.product-head{background:#F2F6FB;border-bottom:1px solid var(--ym-line);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#526B81}.product-row{border-bottom:1px solid #EDF2F6}.product-row:last-of-type{border-bottom:0}.product-name b{display:block;font-size:11.5px;color:var(--ym-navy);margin-bottom:3px}.product-name span{font-size:9.5px;color:var(--ym-muted)}.product-category{font-size:9px;font-weight:800;color:#38546D}.product-price{font:800 13px Montserrat;color:var(--ym-navy);text-align:right}.product-total{background:linear-gradient(90deg,#EEF4FF,#F7F9FF);border-top:1px solid #D9E5F3}.product-total .label{font:800 11px Montserrat;color:var(--ym-navy)}.summary-box{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0 0}.summary-card{background:#fff;border:1px solid var(--ym-line);border-radius:14px;padding:13px}.summary-card b{display:block;font:800 18px Montserrat;color:var(--ym-navy);margin-bottom:4px}.summary-card span{font-size:9px;color:var(--ym-muted)}.summary-card.primary{background:linear-gradient(145deg,#0A2540,#164C79 72%,#484DCF);border:0}.summary-card.primary b,.summary-card.primary span{color:#fff}.empty{padding:28px;text-align:center;font-size:11px;color:var(--ym-muted)}@media(max-width:760px){.products-toolbar{grid-template-columns:1fr}.product-head{display:none}.product-row{grid-template-columns:1fr auto;gap:8px}.product-category{grid-column:1}.product-price{grid-column:2;grid-row:1 / span 2}.product-total{grid-template-columns:1fr}.product-total .product-price{text-align:left}.summary-box{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="ym-main">
+<header class="ym-topbar"><div style="display:flex;align-items:center;gap:10px"><button id="ymMenu" class="ym-mobile-toggle">☰</button><div class="ym-topbar-title">PRODUTOS</div></div><span class="ym-chip stage">PORTFÓLIO YM</span></header>
+<main class="ym-content">
+<div class="ym-header"><div><div class="ym-eyebrow">CENTRAL YM</div><h1 class="ym-title">Produtos e ticket médio</h1><p class="ym-lead">Visão do portfólio atual com filtro por categoria. Total e média acompanham automaticamente os produtos exibidos.</p></div></div>
+
+<div class="products-toolbar">
+<input id="productSearch" class="ym-input" placeholder="Buscar produto...">
+<select id="productFilter" class="ym-select">
+<option value="TODOS">Todos os produtos</option>
+<option value="FUNDACAO">Fundações</option>
+<option value="ENTRADA">Produto de entrada</option>
+<option value="IMPLANTACAO">Implantação</option>
+</select>
+</div>
+
+<div class="summary-box">
+<div class="summary-card"><b id="visibleCount">0</b><span>Produtos exibidos</span></div>
+<div class="summary-card"><b id="visibleTotal">R$ 0,00</b><span>Total dos produtos exibidos</span></div>
+<div class="summary-card primary"><b id="visibleAverage">R$ 0,00</b><span>Ticket médio dos produtos exibidos</span></div>
+</div>
+
+<section class="products-table" style="margin-top:12px">
+<div class="product-head"><span>Produto</span><span>Categoria</span><span style="text-align:right">Valor</span></div>
+<div id="productsBody"></div>
+<div class="product-total"><div class="label">TOTAL / MÉDIA DO FILTRO</div><div id="footerCount" class="product-category">0 produtos</div><div class="product-price"><span id="footerTotal">R$ 0,00</span><br><span id="footerAverage" style="font:700 9px Inter;color:#5B7186">Média R$ 0,00</span></div></div>
+</section>
+
+<div class="ym-meta" style="margin-top:10px">O Raio-X é tratado como produto de entrada. Para referência comercial dos serviços principais, use o filtro correspondente ao recorte que deseja analisar.</div>
+</main>
+</div>
+<script src="/assets/internal-shell.js"></script>
+<script>
+const PRODUCTS=[
+ {name:'Raio-X Estratégico',detail:'Diagnóstico de entrada',category:'ENTRADA',categoryLabel:'Produto de entrada',price:97},
+ {name:'Fundação enxuta',detail:'Estruturação inicial',category:'FUNDACAO',categoryLabel:'Fundação',price:1500},
+ {name:'Fundação acompanhada',detail:'Acompanhamento em 4× de R$ 900',category:'FUNDACAO',categoryLabel:'Fundação',price:3600},
+ {name:'Fundação 6 meses',detail:'Acompanhamento continuado',category:'FUNDACAO',categoryLabel:'Fundação',price:5400},
+ {name:'Implantação completa',detail:'Implantação completa do zero',category:'IMPLANTACAO',categoryLabel:'Implantação',price:2500}
+];
+const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const body=document.getElementById('productsBody'),filter=document.getElementById('productFilter'),search=document.getElementById('productSearch');
+function current(){const f=filter.value,q=search.value.trim().toLowerCase();return PRODUCTS.filter(p=>(f==='TODOS'||p.category===f)&&(!q||[p.name,p.detail,p.categoryLabel].join(' ').toLowerCase().includes(q)))}
+function render(){const list=current(),total=list.reduce((s,p)=>s+p.price,0),avg=list.length?total/list.length:0;body.innerHTML=list.length?list.map(p=>`<div class="product-row"><div class="product-name"><b>${YM.esc(p.name)}</b><span>${YM.esc(p.detail)}</span></div><div class="product-category">${YM.esc(p.categoryLabel)}</div><div class="product-price">${money(p.price)}</div></div>`).join(''):'<div class="empty">Nenhum produto encontrado para este filtro.</div>';document.getElementById('visibleCount').textContent=list.length;document.getElementById('visibleTotal').textContent=money(total);document.getElementById('visibleAverage').textContent=money(avg);document.getElementById('footerCount').textContent=list.length+(list.length===1?' produto':' produtos');document.getElementById('footerTotal').textContent=money(total);document.getElementById('footerAverage').textContent='Média '+money(avg)}
+filter.addEventListener('change',render);search.addEventListener('input',render);
+(async()=>{const s=await YM.requireSession('/Produtos');if(!s)return;YM.shell('PRODUTOS',{email:s.user.email,role:'INTERNO'});render()})();
+</script>
+</body>
+</html>
