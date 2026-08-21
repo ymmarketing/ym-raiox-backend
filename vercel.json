@@ -14,6 +14,8 @@
     { "source": "/CRM/", "destination": "/CRM/index.html" },
     { "source": "/MOTOR", "destination": "/MOTOR/index.html" },
     { "source": "/MOTOR/", "destination": "/MOTOR/index.html" },
+    { "source": "/Produtos", "destination": "/Produtos/index.html" },
+    { "source": "/Produtos/", "destination": "/Produtos/index.html" },
     { "source": "/Identidade", "destination": "/Identidade/index.html" },
     { "source": "/Identidade/", "destination": "/Identidade/index.html" },
     { "source": "/interno", "destination": "/interno/index.html" },
@@ -34,7 +36,7 @@
       ]
     },
     {
-      "source": "/(CRM|MOTOR|Identidade|interno)(.*)",
+      "source": "/(CRM|MOTOR|Produtos|Identidade|interno)(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "no-store" },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
