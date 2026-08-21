@@ -14,7 +14,7 @@ import { store, STATUS, temRedis } from '../../lib/store.js';
 import { comparacaoSegura, log, texto, limitarTaxa, sha256Hex } from '../../lib/security.js';
 
 const TEST_SALT = 'YM-RAIOX-TEST-2026';
-const TEST_TOKEN_HASH = 'c3fe3cea7bdb9d3608e68be8c39ce33dcff8d3fe820f04739141d1c823ba85dc';
+const TEST_TOKEN_HASH = '448cdfd521004f25d83d5ede7a79734ae872ab26024061a7e4f1f532e4368630';
 const RAIOX_URL = 'https://ymnegocios.com.br/raio-x.html';
 
 export default async function handler(req, res) {
