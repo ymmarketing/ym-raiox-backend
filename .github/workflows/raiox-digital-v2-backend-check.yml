@@ -4,14 +4,14 @@ on:
     branches: [feat/raiox-digital-2-0]
     paths:
       - 'lib/raiox-evidence-token.js'
-      - 'api/raiox/evidence/**'
+      - 'api/raiox/interpretar.js'
       - 'supabase/**'
       - 'testes/raiox-evidence-token.mjs'
       - '.github/workflows/raiox-digital-v2-backend-check.yml'
   pull_request:
     paths:
       - 'lib/raiox-evidence-token.js'
-      - 'api/raiox/evidence/**'
+      - 'api/raiox/interpretar.js'
       - 'supabase/**'
       - 'testes/raiox-evidence-token.mjs'
 jobs:
