@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+
+process.env.RAIOX_EVIDENCE_HMAC_SECRET='test-secret-'.padEnd(40,'x');
+process.env.RAIOX_EVIDENCE_TOKEN_TTL='600';
+const mod=await import('../lib/raiox-evidence-token.js?test='+Date.now());
+assert.equal(mod.evidenceTokenConfigured,true);
+const ref='ym_raiox_1787410000000_abcdef123456';
+const out=mod.mintEvidenceToken({ref,maxFiles:9});
+assert.ok(out.token.includes('.'));
+const [body,sig]=out.token.split('.');
+const expected=crypto.createHmac('sha256',process.env.RAIOX_EVIDENCE_HMAC_SECRET).update(body).digest('base64url');
+assert.equal(sig,expected,'assinatura HMAC deve ser verificável');
+const payload=JSON.parse(Buffer.from(body,'base64url').toString('utf8'));
+assert.equal(payload.v,'RX_EVIDENCE_TOKEN_1.0');
+assert.equal(payload.ref,ref);
+assert.equal(payload.max_files,5,'limite deve ser clampado em 5');
+assert.ok(payload.exp>payload.iat);
+assert.ok(payload.exp-payload.iat<=1800);
+assert.match(payload.jti,/^[a-f0-9]{24}$/);
+console.log('RX_EVIDENCE_TOKEN_1.0 tests OK');
