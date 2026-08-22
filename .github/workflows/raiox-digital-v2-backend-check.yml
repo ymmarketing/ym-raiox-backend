@@ -4,18 +4,22 @@ on:
     branches: [feat/raiox-digital-2-0]
     paths:
       - 'lib/raiox-evidence-token.js'
+      - 'lib/raiox-report-v2.js'
       - 'api/raiox/interpretar.js'
       - 'supabase/**'
       - 'testes/raiox-evidence-token.mjs'
+      - 'testes/raiox-report-v2-contract.mjs'
       - '.github/workflows/raiox-digital-v2-backend-check.yml'
   pull_request:
     paths:
       - 'lib/raiox-evidence-token.js'
+      - 'lib/raiox-report-v2.js'
       - 'api/raiox/interpretar.js'
       - 'supabase/**'
       - 'testes/raiox-evidence-token.mjs'
+      - 'testes/raiox-report-v2-contract.mjs'
 jobs:
-  evidence-contract:
+  v2-contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -25,3 +29,5 @@ jobs:
           node-version: '20'
       - name: Validate evidence token contract
         run: node testes/raiox-evidence-token.mjs
+      - name: Validate RX_REPORT_2.0 contract
+        run: node testes/raiox-report-v2-contract.mjs
