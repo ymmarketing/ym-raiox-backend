@@ -1,0 +1,27 @@
+name: Raio-X Digital 2.0 Backend Check
+on:
+  push:
+    branches: [feat/raiox-digital-2-0]
+    paths:
+      - 'lib/raiox-evidence-token.js'
+      - 'api/raiox/evidence/**'
+      - 'supabase/**'
+      - 'testes/raiox-evidence-token.mjs'
+      - '.github/workflows/raiox-digital-v2-backend-check.yml'
+  pull_request:
+    paths:
+      - 'lib/raiox-evidence-token.js'
+      - 'api/raiox/evidence/**'
+      - 'supabase/**'
+      - 'testes/raiox-evidence-token.mjs'
+jobs:
+  evidence-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Validate evidence token contract
+        run: node testes/raiox-evidence-token.mjs
