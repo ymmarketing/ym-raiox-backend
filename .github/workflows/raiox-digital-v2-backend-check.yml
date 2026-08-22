@@ -1,0 +1,33 @@
+name: Raio-X Digital 2.0 Backend Check
+on:
+  push:
+    branches: [feat/raiox-digital-2-0]
+    paths:
+      - 'lib/raiox-evidence-token.js'
+      - 'lib/raiox-report-v2.js'
+      - 'api/raiox/interpretar.js'
+      - 'supabase/**'
+      - 'testes/raiox-evidence-token.mjs'
+      - 'testes/raiox-report-v2-contract.mjs'
+      - '.github/workflows/raiox-digital-v2-backend-check.yml'
+  pull_request:
+    paths:
+      - 'lib/raiox-evidence-token.js'
+      - 'lib/raiox-report-v2.js'
+      - 'api/raiox/interpretar.js'
+      - 'supabase/**'
+      - 'testes/raiox-evidence-token.mjs'
+      - 'testes/raiox-report-v2-contract.mjs'
+jobs:
+  v2-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Validate evidence token contract
+        run: node testes/raiox-evidence-token.mjs
+      - name: Validate RX_REPORT_2.0 contract
+        run: node testes/raiox-report-v2-contract.mjs
