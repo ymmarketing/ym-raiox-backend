@@ -137,7 +137,7 @@ async function handleV2Get(req, res, action) {
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ ok: true, openai_configured: temOpenAI, model: OPENAI_MODEL, report_version: REPORT_VERSION_V2 });
   }
-  if (action !== 'draft') return res.status(400).json({ ok: false, error: 'Ação inválida.' });
+  if (action !== 'draft' && action !== 'draft_proxy') return res.status(400).json({ ok: false, error: 'Ação inválida.' });
   const ref = clean(req.query?.ref, 220);
   const session = await approvedSession(ref);
   if (!session) return res.status(403).json({ ok: false, error: 'Acesso não confirmado.' });
@@ -287,17 +287,17 @@ async function handleV1(req, res, body) {
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return;
   const method = String(req.method || '').toUpperCase();
-  const action = method === 'GET' ? clean(req.query?.action, 40) : clean(parseBody(req)?.action, 40);
+  const body = method === 'POST' ? parseBody(req) : null;
+  const action = clean(method === 'GET' ? req.query?.action : (body?.action || req.query?.action), 40);
 
   if (method === 'GET') return handleV2Get(req, res, action);
   if (method !== 'POST') {
     res.setHeader('Allow', 'GET, POST, OPTIONS');
     return res.status(405).json({ ok: false, error: 'Método não permitido.' });
   }
-  const body = parseBody(req);
   if (!body) return erroSeguro(res, 400, 'Requisição inválida.');
 
-  if (action === 'save_draft') return handleSaveDraft(req, res, body);
+  if (action === 'save_draft' || action === 'draft_proxy') return handleSaveDraft(req, res, body);
   if (action === 'upload_v2') return handleUpload(req, res, body);
   if (action === 'generate_v2') return handleGenerateV2(req, res, body);
   return handleV1(req, res, body);
