@@ -7,11 +7,17 @@ import { store, STATUS, temRedis } from '../../lib/store.js';
 import { limitarTaxa, refValida, texto } from '../../lib/security.js';
 
 function clean(v,max=5000){return texto(v,max).trim();}
+function cleanArray(v,maxItems=30){return (Array.isArray(v)?v:[]).slice(0,maxItems).map(x=>clean(x,500)).filter(Boolean);}
 function sanitize(d,session){
   const answers={}, complements={};
+  const multi=new Set(['Q06','Q10','Q13']);
   for(let i=1;i<=18;i++){
     const id=`Q${String(i).padStart(2,'0')}`;
-    const a=clean(d?.answers?.[id],5000); if(a) answers[id]=a;
+    if(multi.has(id)){
+      const a=cleanArray(d?.answers?.[id]); if(a.length) answers[id]=a;
+    }else{
+      const a=clean(d?.answers?.[id],5000); if(a) answers[id]=a;
+    }
     const c=clean(d?.complements?.[id],3000); if(c) complements[id]=c;
   }
   const links=(Array.isArray(d?.links)?d.links:[]).slice(0,8).map(x=>({
@@ -24,7 +30,8 @@ function sanitize(d,session){
   return {
     business_name:clean(d?.business_name,220),
     answers,complements,links,images,
-    section:Number.isInteger(d?.section)?Math.max(0,Math.min(7,d.section)):0,
+    q06main:clean(d?.q06main,500),
+    section:Number.isInteger(d?.section)?Math.max(0,Math.min(6,d.section)):0,
     updatedAt:new Date().toISOString()
   };
 }
