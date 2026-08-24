@@ -148,6 +148,7 @@ async function handleV2Get(req, res, action) {
     uploads: session.raioxV2Uploads || [],
     report: session.raioxV2Report || null,
     usage: session.raioxV2Cost || null,
+    locked: Boolean(session.raioxV2Report),
   });
 }
 
@@ -156,6 +157,7 @@ async function handleSaveDraft(req, res, body) {
   const ref = clean(body.ref, 220);
   const session = await approvedSession(ref);
   if (!session) return res.status(403).json({ ok: false, error: 'Acesso não confirmado.' });
+  if (session.raioxV2Report) return res.status(409).json({ ok: false, error: 'Este Raio-X já foi concluído e está bloqueado para novas alterações.', code: 'RAIOX_LOCKED' });
   const ok = await limitarTaxa(store, `raiox-v2-draft:${ipOf(req)}`, 60);
   if (!ok) return res.status(429).json({ ok: false, error: 'Muitos salvamentos em sequência.' });
   const d = sanitizeDraft(body.draft || {}, session);
@@ -168,6 +170,7 @@ async function handleUpload(req, res, body) {
   const ref = clean(body.ref, 220);
   const session = await approvedSession(ref);
   if (!session) return res.status(403).json({ ok: false, error: 'Acesso não confirmado.' });
+  if (session.raioxV2Report) return res.status(409).json({ ok: false, error: 'Este Raio-X já foi concluído e não aceita novos materiais.', code: 'RAIOX_LOCKED' });
   const rateOk = await limitarTaxa(store, `raiox-v2-upload:${ipOf(req)}`, 12);
   if (!rateOk) return res.status(429).json({ ok: false, error: 'Muitos envios. Aguarde um minuto.' });
   const uploads = Array.isArray(session.raioxV2Uploads) ? session.raioxV2Uploads : [];
@@ -202,6 +205,20 @@ async function handleGenerateV2(req, res, body) {
   const session = await approvedSession(ref);
   if (!session) return res.status(403).json({ ok: false, error: 'Pagamento ou acesso ainda não confirmado.' });
 
+  // UM PAGAMENTO = UMA GERAÇÃO DE IA.
+  // Se o relatório já existe, nunca chama a OpenAI novamente: apenas devolve o resultado salvo.
+  if (session.raioxV2Report) {
+    log('info', 'Requisição repetida devolveu relatório V2 já salvo sem nova chamada de IA.', { ref });
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(200).json({
+      ok: true,
+      report: session.raioxV2Report,
+      usage: session.raioxV2Cost || null,
+      reused: true,
+      incremental_cost_usd: 0,
+    });
+  }
+
   const allowedFileIds = new Set((session.raioxV2Uploads || []).map(x => x?.file_id).filter(Boolean));
   const intake = sanitizeIntake(body.intake || {}, allowedFileIds);
   const missing = REQUIRED_V2.filter(id => !intake.answers[id]);
@@ -229,6 +246,7 @@ async function handleGenerateV2(req, res, body) {
       raioxV2Model: OPENAI_MODEL,
       raioxV2Cost: result.cost,
       raioxV2Report: result.report,
+      raioxV2LockedAt: new Date().toISOString(),
       raioxV2LinkAudit: result.linkAudit.map(x => ({ id: x.id, url: x.url, status: x.status, reason: x.reason })),
     });
 
@@ -236,9 +254,9 @@ async function handleGenerateV2(req, res, body) {
     if (intake.images.length) {
       await store.atualizar(ref, { raioxV2Uploads: [], raioxV2FilesDeletedAt: new Date().toISOString() });
     }
-    log('info', 'Raio-X V2 concluído', { ref, model: OPENAI_MODEL, cost_usd: result.cost?.estimated_total_usd, links: intake.links.length, images: intake.images.length });
+    log('info', 'Raio-X V2 concluído e sessão bloqueada para nova geração', { ref, model: OPENAI_MODEL, cost_usd: result.cost?.estimated_total_usd, links: intake.links.length, images: intake.images.length });
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json({ ok: true, report: result.report, usage: result.cost });
+    return res.status(200).json({ ok: true, report: result.report, usage: result.cost, reused: false });
   } catch (e) {
     const msg = clean(e?.message || 'Falha na análise.', 500);
     log('error', 'Falha no Raio-X V2', { ref, motivo: msg });
