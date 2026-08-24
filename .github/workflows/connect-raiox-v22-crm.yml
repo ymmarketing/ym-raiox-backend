@@ -1,0 +1,58 @@
+name: Connect Raio-X V2.2 to CRM
+on:
+  push:
+    paths:
+      - '.trigger-raiox-v22-crm'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch V2.2 generation flow
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('api/raiox/interpretar.js')
+          s=p.read_text(encoding='utf-8')
+
+          imp="""import {\n  gerarRaioxV22,\n  REPORT_VERSION_V22,\n  OPENAI_MODEL_V22,\n} from '../../lib/raiox-v2-report-v22.js';\n"""
+          newimp=imp+"import { syncRaioxV22ToCrm } from '../../lib/raiox-crm-sync.js';\n"
+          if "raiox-crm-sync.js" not in s:
+              if imp not in s: raise SystemExit('import anchor not found')
+              s=s.replace(imp,newimp,1)
+
+          old="""    locked: Boolean(session.raioxV2Report),\n  });\n}"""
+          new="""    locked: Boolean(session.raioxV2Report),\n    business_name: session.raioxV2Intake?.business_name || session.raioxV2Draft?.business_name || null,\n    crm_sync_status: session.raioxV2CrmSyncStatus || null,\n  });\n}"""
+          if 'crm_sync_status:' not in s:
+              if old not in s: raise SystemExit('GET response anchor not found')
+              s=s.replace(old,new,1)
+
+          oldcached="""  if (session.raioxV2Report) {\n    log('info', 'Requisição repetida devolveu relatório já salvo sem nova chamada de IA.', { ref });\n    res.setHeader('Cache-Control', 'no-store');\n    return res.status(200).json({ ok: true, report: session.raioxV2Report, usage: session.raioxV2Cost || null, reused: true, incremental_cost_usd: 0 });\n  }"""
+          newcached="""  if (session.raioxV2Report) {\n    // Reabrir o relatório nunca chama a OpenAI. Se o CRM falhou antes, apenas o sync idempotente é tentado novamente.\n    if (session.raioxV2CrmSyncStatus !== 'success') {\n      try {\n        const crm = await syncRaioxV22ToCrm({\n          ref,\n          intake: session.raioxV2Intake || session.raioxV2Draft || {},\n          report: session.raioxV2Report,\n          session,\n          completedAt: session.raioxV2CompletedAt,\n        });\n        await store.atualizar(ref, {\n          raioxV2CrmSyncStatus: 'success',\n          raioxV2CrmSyncAt: new Date().toISOString(),\n          raioxV2CrmIds: { intake_id: crm.intake_id, contact_id: crm.contact_id, opportunity_id: crm.opportunity_id },\n          raioxV2CrmSyncError: null,\n        });\n      } catch (e) {\n        const crmMsg = clean(e?.message || 'Falha no sync CRM.', 300);\n        await store.atualizar(ref, { raioxV2CrmSyncStatus: 'error', raioxV2CrmSyncError: crmMsg, raioxV2CrmSyncErrorAt: new Date().toISOString() }).catch(() => {});\n        log('warn', 'Retry de CRM do Raio-X V2.2 falhou, sem nova chamada de IA.', { ref, motivo: crmMsg });\n      }\n    }\n    log('info', 'Requisição repetida devolveu relatório já salvo sem nova chamada de IA.', { ref });\n    res.setHeader('Cache-Control', 'no-store');\n    return res.status(200).json({ ok: true, report: session.raioxV2Report, usage: session.raioxV2Cost || null, reused: true, incremental_cost_usd: 0 });\n  }"""
+          if 'Retry de CRM do Raio-X V2.2' not in s:
+              if oldcached not in s: raise SystemExit('cached branch anchor not found')
+              s=s.replace(oldcached,newcached,1)
+
+          anchor="""    await Promise.all(intake.images.map(x => deleteOpenAIFile(x.file_id)));\n    if (intake.images.length) await store.atualizar(ref, { raioxV2Uploads: [], raioxV2FilesDeletedAt: new Date().toISOString() });\n\n    log('info', 'Raio-X V2.2 concluído e sessão bloqueada para nova geração',"""
+          inserted="""    await Promise.all(intake.images.map(x => deleteOpenAIFile(x.file_id)));\n    if (intake.images.length) await store.atualizar(ref, { raioxV2Uploads: [], raioxV2FilesDeletedAt: new Date().toISOString() });\n\n    // CRM é pós-entrega e idempotente. Uma falha de CRM não bloqueia o relatório do cliente.\n    try {\n      const crm = await syncRaioxV22ToCrm({ ref, intake, report: result.report, session, completedAt: new Date().toISOString() });\n      await store.atualizar(ref, {\n        raioxV2CrmSyncStatus: 'success',\n        raioxV2CrmSyncAt: new Date().toISOString(),\n        raioxV2CrmIds: { intake_id: crm.intake_id, contact_id: crm.contact_id, opportunity_id: crm.opportunity_id },\n        raioxV2CrmSyncError: null,\n      });\n      log('info', 'Raio-X V2.2 conectado ao CRM.', { ref, intake_id: crm.intake_id, contact_id: crm.contact_id, opportunity_id: crm.opportunity_id });\n    } catch (e) {\n      const crmMsg = clean(e?.message || 'Falha no sync CRM.', 300);\n      await store.atualizar(ref, { raioxV2CrmSyncStatus: 'error', raioxV2CrmSyncError: crmMsg, raioxV2CrmSyncErrorAt: new Date().toISOString() }).catch(() => {});\n      log('warn', 'Raio-X V2.2 entregue, mas sync com CRM falhou.', { ref, motivo: crmMsg });\n    }\n\n    log('info', 'Raio-X V2.2 concluído e sessão bloqueada para nova geração',"""
+          if 'Raio-X V2.2 conectado ao CRM.' not in s:
+              if anchor not in s: raise SystemExit('post-generation anchor not found')
+              s=s.replace(anchor,inserted,1)
+
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Syntax checks
+        run: |
+          node --check api/raiox/interpretar.js
+          node --check lib/raiox-crm-sync.js
+          grep -q "syncRaioxV22ToCrm" api/raiox/interpretar.js
+      - name: Commit
+        run: |
+          git config user.name 'YM Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add api/raiox/interpretar.js
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'feat(raiox): sync V2.2 delivery to CRM idempotently'
+          git push
