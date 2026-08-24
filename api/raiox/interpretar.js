@@ -23,6 +23,7 @@ import {
   REPORT_VERSION_V22,
   OPENAI_MODEL_V22,
 } from '../../lib/raiox-v2-report-v22.js';
+import { syncRaioxV22ToCrm } from '../../lib/raiox-crm-sync.js';
 
 export const maxDuration = 60;
 
@@ -140,6 +141,8 @@ async function handleV2Get(req, res, action) {
     report: session.raioxV2Report || null,
     usage: session.raioxV2Cost || null,
     locked: Boolean(session.raioxV2Report),
+    business_name: session.raioxV2Intake?.business_name || session.raioxV2Draft?.business_name || null,
+    crm_sync_status: session.raioxV2CrmSyncStatus || null,
   });
 }
 
@@ -192,6 +195,28 @@ async function handleGenerateV2(req, res, body) {
 
   // UM PAGAMENTO = UMA GERAÇÃO DE IA.
   if (session.raioxV2Report) {
+    // Reabrir o relatório nunca chama a OpenAI. Se o CRM falhou antes, apenas o sync idempotente é tentado novamente.
+    if (session.raioxV2CrmSyncStatus !== 'success') {
+      try {
+        const crm = await syncRaioxV22ToCrm({
+          ref,
+          intake: session.raioxV2Intake || session.raioxV2Draft || {},
+          report: session.raioxV2Report,
+          session,
+          completedAt: session.raioxV2CompletedAt,
+        });
+        await store.atualizar(ref, {
+          raioxV2CrmSyncStatus: 'success',
+          raioxV2CrmSyncAt: new Date().toISOString(),
+          raioxV2CrmIds: { intake_id: crm.intake_id, contact_id: crm.contact_id, opportunity_id: crm.opportunity_id },
+          raioxV2CrmSyncError: null,
+        });
+      } catch (e) {
+        const crmMsg = clean(e?.message || 'Falha no sync CRM.', 300);
+        await store.atualizar(ref, { raioxV2CrmSyncStatus: 'error', raioxV2CrmSyncError: crmMsg, raioxV2CrmSyncErrorAt: new Date().toISOString() }).catch(() => {});
+        log('warn', 'Retry de CRM do Raio-X V2.2 falhou, sem nova chamada de IA.', { ref, motivo: crmMsg });
+      }
+    }
     log('info', 'Requisição repetida devolveu relatório já salvo sem nova chamada de IA.', { ref });
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ ok: true, report: session.raioxV2Report, usage: session.raioxV2Cost || null, reused: true, incremental_cost_usd: 0 });
@@ -230,6 +255,22 @@ async function handleGenerateV2(req, res, body) {
 
     await Promise.all(intake.images.map(x => deleteOpenAIFile(x.file_id)));
     if (intake.images.length) await store.atualizar(ref, { raioxV2Uploads: [], raioxV2FilesDeletedAt: new Date().toISOString() });
+
+    // CRM é pós-entrega e idempotente. Uma falha de CRM não bloqueia o relatório do cliente.
+    try {
+      const crm = await syncRaioxV22ToCrm({ ref, intake, report: result.report, session, completedAt: new Date().toISOString() });
+      await store.atualizar(ref, {
+        raioxV2CrmSyncStatus: 'success',
+        raioxV2CrmSyncAt: new Date().toISOString(),
+        raioxV2CrmIds: { intake_id: crm.intake_id, contact_id: crm.contact_id, opportunity_id: crm.opportunity_id },
+        raioxV2CrmSyncError: null,
+      });
+      log('info', 'Raio-X V2.2 conectado ao CRM.', { ref, intake_id: crm.intake_id, contact_id: crm.contact_id, opportunity_id: crm.opportunity_id });
+    } catch (e) {
+      const crmMsg = clean(e?.message || 'Falha no sync CRM.', 300);
+      await store.atualizar(ref, { raioxV2CrmSyncStatus: 'error', raioxV2CrmSyncError: crmMsg, raioxV2CrmSyncErrorAt: new Date().toISOString() }).catch(() => {});
+      log('warn', 'Raio-X V2.2 entregue, mas sync com CRM falhou.', { ref, motivo: crmMsg });
+    }
 
     log('info', 'Raio-X V2.2 concluído e sessão bloqueada para nova geração', { ref, model: OPENAI_MODEL_V22, cost_usd: result.cost?.estimated_total_usd, links: intake.links.length, images: intake.images.length });
     res.setHeader('Cache-Control', 'no-store');
