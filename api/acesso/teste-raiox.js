@@ -1,10 +1,10 @@
 /**
  * GET /api/acesso/teste-raiox?token=...
  * GET /api/acesso/teste-raiox?ref=...&teste_execucao=1
+ * GET /api/acesso/teste-raiox?v2=1&token=...  → homologação Raio-X V2
  *
- * Teste end-to-end do Raio-X oficial sem cobrança. A segunda etapa serve o
- * HTML oficial da YM em modo de teste e adiciona apenas um guardrail: falha de
- * persistência não pode impedir a exibição do relatório.
+ * Teste end-to-end sem cobrança. O fluxo legado permanece intacto; o modo v2
+ * reutiliza esta Function para não aumentar a quantidade de Functions Vercel.
  */
 import crypto from 'node:crypto';
 import { aplicarCors } from '../../lib/cors.js';
@@ -19,6 +19,11 @@ const TEST_TOKEN_HASHES = [
 const RAIOX_SOURCE = 'https://ymnegocios.com.br/raio-x.html';
 const CANONICAL_SELF = 'https://ym-raiox-backend.vercel.app/api/acesso/teste-raiox';
 
+// Homologação V2 — token de uso único. A chave da OpenAI nunca passa pelo browser.
+const V2_SALT = 'YM-RAIOX-V2-VALIDACAO-2026-08-24';
+const V2_TOKEN_HASH = '0a3afaf5ff590f09215e8bae6627d3d86310261d682f3d7a38363f5d80d1368f';
+const V2_DEST = 'https://ymnegocios.com.br/raio-x-validacao-2026-08-24.html';
+
 function htmlError(res, status, title, detail) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -29,8 +34,6 @@ function injectTestGuard(html) {
   const stamp = Date.now();
   let out = String(html || '');
   out = out.replace('<head>', '<head><base href="https://ymnegocios.com.br/">');
-
-  // Evita reaproveitar no navegador uma versão anterior dos JS durante o teste.
   out = out.replace(/assets\/js\/raiox-v3\.1-persist\.js\?v=[^\"']+/g, `https://ymnegocios.com.br/assets/js/raiox-v3.1-persist.js?test=${stamp}`);
   out = out.replace(/assets\/js\/raiox-payment-shell-v1\.js\?v=[^\"']+/g, `https://ymnegocios.com.br/assets/js/raiox-payment-shell-v1.js?test=${stamp}`);
   out = out.replace(/assets\/js\/raiox-report-v1-1\.js\?v=[^\"']+/g, `https://ymnegocios.com.br/assets/js/raiox-report-v1-1.js?test=${stamp}`);
@@ -59,8 +62,33 @@ function injectTestGuard(html) {
   root.setTimeout(patch,0);root.setTimeout(patch,500);root.setTimeout(patch,1500);
 })(window);
 </script>`;
-
   return out.includes('</body>') ? out.replace('</body>', guard + '</body>') : out + guard;
+}
+
+async function liberarV2(req, res, ip) {
+  const token = texto(req.query?.token, 120).trim();
+  if (!token) return htmlError(res, 400, 'Link de validação inválido', 'O token de validação está ausente.');
+  const hash = await sha256Hex(V2_SALT + token);
+  if (!comparacaoSegura(hash, V2_TOKEN_HASH)) return htmlError(res, 403, 'Link de validação inválido', 'Este token não foi reconhecido.');
+
+  const ref = `ym_raiox_${Date.now()}_mestre${crypto.randomBytes(8).toString('hex')}`;
+  const reservou = await store.marcarCodigoResgatado(V2_TOKEN_HASH, ref);
+  if (!reservou) return htmlError(res, 403, 'Link já utilizado', 'Este link de validação já foi usado.');
+
+  const now = new Date().toISOString();
+  await store.salvar(ref, {
+    ref,
+    status: STATUS.APPROVED,
+    paymentId: null,
+    customer: 'VALIDAÇÃO RAIO-X V2 YM',
+    value: 0,
+    origem: 'validacao_raiox_v2',
+    createdAt: now,
+    updatedAt: now,
+  });
+  log('info', 'Sessão de validação Raio-X V2 criada.', { ip, ref });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.redirect(302, `${V2_DEST}?ref=${encodeURIComponent(ref)}&validacao=1`);
 }
 
 export default async function handler(req, res) {
@@ -74,6 +102,10 @@ export default async function handler(req, res) {
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'desconhecido';
   const rateOk = await limitarTaxa(store, `teste-raiox:${ip}`, 8);
   if (!rateOk) return htmlError(res, 429, 'Muitas tentativas', 'Aguarde um minuto e tente novamente.');
+
+  // V2 usa o mesmo endpoint/test Function, mas cria uma sessão própria e segue
+  // para a experiência nova. Não interfere no teste legado abaixo.
+  if (String(req.query?.v2 || '') === '1') return liberarV2(req, res, ip);
 
   const ref = texto(req.query?.ref, 220).trim();
   if (ref) {
@@ -106,8 +138,6 @@ export default async function handler(req, res) {
   const tokenHash = TEST_TOKEN_HASHES.find((h) => comparacaoSegura(hash, h));
   if (!tokenHash) return htmlError(res, 403, 'Link de teste inválido', 'Este token não foi reconhecido.');
 
-  // Usa o formato "mestre" já aceito pelos validadores internos, mas a origem
-  // no store continua identificada exclusivamente como teste_execucao.
   const newRef = `ym_raiox_${Date.now()}_mestre${crypto.randomBytes(6).toString('hex')}`;
   const reservou = await store.marcarCodigoResgatado(tokenHash, newRef);
   if (!reservou) return htmlError(res, 403, 'Link já utilizado', 'Este link de teste já foi usado.');
