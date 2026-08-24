@@ -22,7 +22,8 @@ const CANONICAL_SELF = 'https://ym-raiox-backend.vercel.app/api/acesso/teste-rai
 const V2_SALT = 'YM-RAIOX-V2-VALIDACAO-2026-08-24';
 const V2_TOKEN_HASHES = [
   '0a3afaf5ff590f09215e8bae6627d3d86310261d682f3d7a38363f5d80d1368f',
-  'e85a564e681b10ee79d8078c9154159c687bcc0570d18b0f59d6f86d0e05d255'
+  'e85a564e681b10ee79d8078c9154159c687bcc0570d18b0f59d6f86d0e05d255',
+  'cb1d748093097a529612a8d17b381c8326aaacb042824f1fef315406ec37ff4e'
 ];
 const V2_DEST = 'https://ymnegocios.com.br/raio-x-validacao-2026-08-24.html';
 
