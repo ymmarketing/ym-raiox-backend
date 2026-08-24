@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
     "api/**/*.js": {
-      "maxDuration": 30
+      "maxDuration": 60
     }
   },
   "redirects": [
@@ -10,6 +10,11 @@
     { "source": "/VOS/", "destination": "/MOTOR", "permanent": false }
   ],
   "rewrites": [
+    { "source": "/api/raiox/interpretar-v2", "destination": "/api/raiox/interpretar?action=generate_v2" },
+    { "source": "/api/raiox/upload-v2", "destination": "/api/raiox/interpretar?action=upload_v2" },
+    { "source": "/api/raiox/rascunho-v2", "destination": "/api/raiox/interpretar?action=draft_proxy" },
+    { "source": "/api/raiox/status-v2", "destination": "/api/raiox/interpretar?action=status" },
+    { "source": "/api/acesso/validacao-raiox-v2", "destination": "/api/acesso/teste-raiox?v2=1" },
     { "source": "/CRM", "destination": "/CRM/index.html" },
     { "source": "/CRM/", "destination": "/CRM/index.html" },
     { "source": "/MOTOR", "destination": "/MOTOR/index.html" },
