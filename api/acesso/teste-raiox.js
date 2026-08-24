@@ -19,9 +19,11 @@ const TEST_TOKEN_HASHES = [
 const RAIOX_SOURCE = 'https://ymnegocios.com.br/raio-x.html';
 const CANONICAL_SELF = 'https://ym-raiox-backend.vercel.app/api/acesso/teste-raiox';
 
-// Homologação V2 — token de uso único. A chave da OpenAI nunca passa pelo browser.
 const V2_SALT = 'YM-RAIOX-V2-VALIDACAO-2026-08-24';
-const V2_TOKEN_HASH = '0a3afaf5ff590f09215e8bae6627d3d86310261d682f3d7a38363f5d80d1368f';
+const V2_TOKEN_HASHES = [
+  '0a3afaf5ff590f09215e8bae6627d3d86310261d682f3d7a38363f5d80d1368f',
+  'e85a564e681b10ee79d8078c9154159c687bcc0570d18b0f59d6f86d0e05d255'
+];
 const V2_DEST = 'https://ymnegocios.com.br/raio-x-validacao-2026-08-24.html';
 
 function htmlError(res, status, title, detail) {
@@ -69,10 +71,11 @@ async function liberarV2(req, res, ip) {
   const token = texto(req.query?.token, 120).trim();
   if (!token) return htmlError(res, 400, 'Link de validação inválido', 'O token de validação está ausente.');
   const hash = await sha256Hex(V2_SALT + token);
-  if (!comparacaoSegura(hash, V2_TOKEN_HASH)) return htmlError(res, 403, 'Link de validação inválido', 'Este token não foi reconhecido.');
+  const tokenHash = V2_TOKEN_HASHES.find(h => comparacaoSegura(hash, h));
+  if (!tokenHash) return htmlError(res, 403, 'Link de validação inválido', 'Este token não foi reconhecido.');
 
   const ref = `ym_raiox_${Date.now()}_mestre${crypto.randomBytes(8).toString('hex')}`;
-  const reservou = await store.marcarCodigoResgatado(V2_TOKEN_HASH, ref);
+  const reservou = await store.marcarCodigoResgatado(tokenHash, ref);
   if (!reservou) return htmlError(res, 403, 'Link já utilizado', 'Este link de validação já foi usado.');
 
   const now = new Date().toISOString();
@@ -103,8 +106,6 @@ export default async function handler(req, res) {
   const rateOk = await limitarTaxa(store, `teste-raiox:${ip}`, 8);
   if (!rateOk) return htmlError(res, 429, 'Muitas tentativas', 'Aguarde um minuto e tente novamente.');
 
-  // V2 usa o mesmo endpoint/test Function, mas cria uma sessão própria e segue
-  // para a experiência nova. Não interfere no teste legado abaixo.
   if (String(req.query?.v2 || '') === '1') return liberarV2(req, res, ip);
 
   const ref = texto(req.query?.ref, 220).trim();
