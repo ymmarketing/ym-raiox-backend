@@ -3,13 +3,6 @@
  *
  * Mantém RX_REPORT_1.1 (legado atual) e concentra as operações do Raio-X V2
  * na mesma Serverless Function para respeitar o limite de Functions do plano.
- *
- * V1 POST (sem action): { packet, responses, ref }
- * V2 GET  ?action=status
- * V2 GET  ?action=draft&ref=...
- * V2 POST { action:'save_draft', ref, draft }
- * V2 POST { action:'upload_v2', ref, name, context, data_url }
- * V2 POST { action:'generate_v2', ref, intake }
  */
 import { aplicarCors } from '../../lib/cors.js';
 import { store, STATUS, temRedis } from '../../lib/store.js';
@@ -20,18 +13,20 @@ import {
   REPORT_VERSION,
 } from '../../lib/raiox-report-v1-1.js';
 import {
-  gerarRaioxV2,
   temOpenAI,
   OPENAI_MODEL,
-  REPORT_VERSION_V2,
   uploadImageToOpenAI,
   deleteOpenAIFile,
 } from '../../lib/raiox-v2-openai.js';
+import {
+  gerarRaioxV22,
+  REPORT_VERSION_V22,
+  OPENAI_MODEL_V22,
+} from '../../lib/raiox-v2-report-v22.js';
 
 export const maxDuration = 60;
 
-const EXIGE_PAGAMENTO =
-  String(process.env.REQUER_PAGAMENTO_RELATORIO ?? 'true').toLowerCase() !== 'false';
+const EXIGE_PAGAMENTO = String(process.env.REQUER_PAGAMENTO_RELATORIO ?? 'true').toLowerCase() !== 'false';
 const REQUIRED_V2 = Array.from({ length: 18 }, (_, i) => `Q${String(i + 1).padStart(2, '0')}`);
 const MULTI_V2 = new Set(['Q06', 'Q10', 'Q13']);
 
@@ -43,12 +38,8 @@ function parseBody(req) {
   return body && typeof body === 'object' ? body : null;
 }
 function clean(v, max = 5000) { return texto(v, max).trim(); }
-function cleanArray(v, maxItems = 30) {
-  return (Array.isArray(v) ? v : []).slice(0, maxItems).map(x => clean(x, 500)).filter(Boolean);
-}
-function ipOf(req) {
-  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'desconhecido';
-}
+function cleanArray(v, maxItems = 30) { return (Array.isArray(v) ? v : []).slice(0, maxItems).map(x => clean(x, 500)).filter(Boolean); }
+function ipOf(req) { return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'desconhecido'; }
 
 async function approvedSession(ref) {
   if (!temRedis || !ref || !refValida(ref)) return null;
@@ -135,7 +126,7 @@ function decodeDataUrl(v) {
 async function handleV2Get(req, res, action) {
   if (action === 'status') {
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json({ ok: true, openai_configured: temOpenAI, model: OPENAI_MODEL, report_version: REPORT_VERSION_V2 });
+    return res.status(200).json({ ok: true, openai_configured: temOpenAI, model: OPENAI_MODEL_V22 || OPENAI_MODEL, report_version: REPORT_VERSION_V22 });
   }
   if (action !== 'draft' && action !== 'draft_proxy') return res.status(400).json({ ok: false, error: 'Ação inválida.' });
   const ref = clean(req.query?.ref, 220);
@@ -181,13 +172,7 @@ async function handleUpload(req, res, body) {
     const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
     const name = `${base}.${ext}`;
     const uploaded = await uploadImageToOpenAI({ buffer, mime, name });
-    const item = {
-      file_id: uploaded.file_id,
-      name,
-      context: clean(body.context, 1200),
-      bytes: uploaded.bytes,
-      uploadedAt: new Date().toISOString(),
-    };
+    const item = { file_id: uploaded.file_id, name, context: clean(body.context, 1200), bytes: uploaded.bytes, uploadedAt: new Date().toISOString() };
     await store.atualizar(ref, { raioxV2Uploads: [...uploads, item] });
     log('info', 'Print vinculado ao Raio-X V2', { ref, file_id: item.file_id, bytes: item.bytes });
     return res.status(200).json({ ok: true, file: item });
@@ -198,7 +183,7 @@ async function handleUpload(req, res, body) {
 
 async function handleGenerateV2(req, res, body) {
   if (!temRedis) return res.status(503).json({ ok: false, error: 'Sessão indisponível no momento.' });
-  if (!temOpenAI) return res.status(503).json({ ok: false, error: 'OpenAI ainda não configurada no backend.', code: 'OPENAI_NOT_CONFIGURED', model: OPENAI_MODEL });
+  if (!temOpenAI) return res.status(503).json({ ok: false, error: 'OpenAI ainda não configurada no backend.', code: 'OPENAI_NOT_CONFIGURED', model: OPENAI_MODEL_V22 || OPENAI_MODEL });
   const rateOk = await limitarTaxa(store, `raiox-v2:${ipOf(req)}`, 5);
   if (!rateOk) return res.status(429).json({ ok: false, error: 'Muitas tentativas. Aguarde um minuto.' });
   const ref = clean(body.ref, 220);
@@ -206,17 +191,10 @@ async function handleGenerateV2(req, res, body) {
   if (!session) return res.status(403).json({ ok: false, error: 'Pagamento ou acesso ainda não confirmado.' });
 
   // UM PAGAMENTO = UMA GERAÇÃO DE IA.
-  // Se o relatório já existe, nunca chama a OpenAI novamente: apenas devolve o resultado salvo.
   if (session.raioxV2Report) {
-    log('info', 'Requisição repetida devolveu relatório V2 já salvo sem nova chamada de IA.', { ref });
+    log('info', 'Requisição repetida devolveu relatório já salvo sem nova chamada de IA.', { ref });
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json({
-      ok: true,
-      report: session.raioxV2Report,
-      usage: session.raioxV2Cost || null,
-      reused: true,
-      incremental_cost_usd: 0,
-    });
+    return res.status(200).json({ ok: true, report: session.raioxV2Report, usage: session.raioxV2Cost || null, reused: true, incremental_cost_usd: 0 });
   }
 
   const allowedFileIds = new Set((session.raioxV2Uploads || []).map(x => x?.file_id).filter(Boolean));
@@ -238,12 +216,12 @@ async function handleGenerateV2(req, res, body) {
       },
     });
 
-    const result = await gerarRaioxV2(intake);
+    const result = await gerarRaioxV22(intake);
     await store.atualizar(ref, {
       raioxV2Status: 'completed',
       raioxV2CompletedAt: new Date().toISOString(),
-      raioxV2ReportVersion: REPORT_VERSION_V2,
-      raioxV2Model: OPENAI_MODEL,
+      raioxV2ReportVersion: REPORT_VERSION_V22,
+      raioxV2Model: OPENAI_MODEL_V22,
       raioxV2Cost: result.cost,
       raioxV2Report: result.report,
       raioxV2LockedAt: new Date().toISOString(),
@@ -251,24 +229,21 @@ async function handleGenerateV2(req, res, body) {
     });
 
     await Promise.all(intake.images.map(x => deleteOpenAIFile(x.file_id)));
-    if (intake.images.length) {
-      await store.atualizar(ref, { raioxV2Uploads: [], raioxV2FilesDeletedAt: new Date().toISOString() });
-    }
-    log('info', 'Raio-X V2 concluído e sessão bloqueada para nova geração', { ref, model: OPENAI_MODEL, cost_usd: result.cost?.estimated_total_usd, links: intake.links.length, images: intake.images.length });
+    if (intake.images.length) await store.atualizar(ref, { raioxV2Uploads: [], raioxV2FilesDeletedAt: new Date().toISOString() });
+
+    log('info', 'Raio-X V2.2 concluído e sessão bloqueada para nova geração', { ref, model: OPENAI_MODEL_V22, cost_usd: result.cost?.estimated_total_usd, links: intake.links.length, images: intake.images.length });
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ ok: true, report: result.report, usage: result.cost, reused: false });
   } catch (e) {
     const msg = clean(e?.message || 'Falha na análise.', 500);
-    log('error', 'Falha no Raio-X V2', { ref, motivo: msg });
+    log('error', 'Falha no Raio-X V2.2', { ref, motivo: msg });
     await store.atualizar(ref, { raioxV2Status: 'error', raioxV2Error: msg, raioxV2ErrorAt: new Date().toISOString() }).catch(() => {});
     return res.status(502).json({ ok: false, error: 'Não foi possível concluir a análise agora.', detail: process.env.NODE_ENV === 'development' ? msg : undefined });
   }
 }
 
 async function handleV1(req, res, body) {
-  if (!temChaveRaioxInterpretativo) {
-    return erroSeguro(res, 503, 'Interpretação temporariamente indisponível.', { causa: 'ANTHROPIC_API_KEY ausente' });
-  }
+  if (!temChaveRaioxInterpretativo) return erroSeguro(res, 503, 'Interpretação temporariamente indisponível.', { causa: 'ANTHROPIC_API_KEY ausente' });
   if (temRedis) {
     const ok = await limitarTaxa(store, `raiox-interpretar:${ipOf(req)}`, 6);
     if (!ok) return erroSeguro(res, 429, 'Muitas tentativas. Aguarde um minuto.', { ip: ipOf(req) });
