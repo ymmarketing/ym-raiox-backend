@@ -36,7 +36,7 @@ Deno.serve(async(req:Request)=>{
     const [cq,sq,pq,eq,dq,aq,nq,contentQ,strategyQ,performanceKpiQ,performanceMeasurementQ,performanceActionQ,contentMetricQ]=await Promise.all([
       admin.from('crm_clients').select('id,status,became_client_at,source_intake_id,source_case_id,contact:crm_contacts(id,name,business_name,email,phone,city_state,segment,website_url,linkedin_url,instagram_url)').eq('id',clientId).maybeSingle(),
       admin.from('crm_client_services').select('id,service_code,service_name,service_type,status,contracted_value,monthly_value,recurrence_months,start_date,end_date,next_billing_date,project:client_project_meta(id,display_name,portal_status,progress_pct,current_phase,summary,next_step,next_step_due_at,visible_to_client),payments:crm_payments(id,amount,status,payment_date,paid_at,due_date,payment_method,competence_month)').eq('client_id',clientId).order('created_at',{ascending:true}),
-      admin.from('client_calendar_events').select('id,client_service_id,title,description,event_type,starts_at,ends_at,all_day,external_url').eq('client_id',clientId).eq('visible_to_client',true).order('starts_at',{ascending:true}),
+      admin.from('client_calendar_events').select('id,client_service_id,title,description,event_type,starts_at,ends_at,all_day,external_url,status,cancelled_at,cancellation_reason').eq('client_id',clientId).eq('visible_to_client',true).order('starts_at',{ascending:true}),
       admin.from('client_documents').select('id,client_service_id,title,category,drive_url,version_label,competence_month,description,created_at').eq('client_id',clientId).eq('visible_to_client',true).order('created_at',{ascending:false}),
       admin.from('client_approval_items').select('id,client_service_id,title,content_type,description,status,due_at,scheduled_at,created_at,versions:client_approval_versions(id,version_number,drive_url,notes,created_at),actions:client_approval_actions(id,version_id,action,comment,actor_type,created_at)').eq('client_id',clientId).eq('visible_to_client',true).order('created_at',{ascending:false}),
       admin.from('client_notifications').select('id,notification_type,title,message,target_url,read_at,created_at').eq('client_id',clientId).order('created_at',{ascending:false}).limit(100),
@@ -97,6 +97,20 @@ Deno.serve(async(req:Request)=>{
     }
     if(action==='MARK_NOTIFICATION_READ'&&uuid(b.notification_id)){
       const q=await admin.from('client_notifications').update({read_at:new Date().toISOString()}).eq('id',b.notification_id).eq('client_id',clientId);if(q.error)throw q.error;return reply(200,{ok:true},origin);
+    }
+    if(action==='CANCEL_EVENT'&&uuid(b.event_id)){
+      const reason=text(b.reason,3000);
+      const event=await admin.from('client_calendar_events').select('id,title,event_type,starts_at,status').eq('id',b.event_id).eq('client_id',clientId).eq('visible_to_client',true).maybeSingle();
+      if(event.error)throw event.error;if(!event.data)return reply(404,{ok:false,error:'event_not_found'},origin);
+      if(event.data.event_type!=='REUNIAO')return reply(400,{ok:false,error:'event_cancellation_not_allowed'},origin);
+      if(event.data.status==='CANCELADO')return reply(200,{ok:true,event:event.data,already_cancelled:true},origin);
+      if(new Date(event.data.starts_at).getTime()<=Date.now())return reply(400,{ok:false,error:'past_event_cannot_be_cancelled'},origin);
+      const cancelledAt=new Date().toISOString();
+      const update=await admin.from('client_calendar_events').update({status:'CANCELADO',cancelled_at:cancelledAt,cancellation_reason:reason||null,cancelled_by_email:email,updated_by:email}).eq('id',b.event_id).eq('client_id',clientId).select('id,title,event_type,starts_at,status,cancelled_at,cancellation_reason').single();
+      if(update.error)throw update.error;
+      await admin.from('client_notifications').insert({client_id:clientId,notification_type:'CANCELAMENTO',title:'Compromisso cancelado',message:event.data.title,target_url:'/areadocliente#calendario',created_by:email});
+      await admin.from('vos_access_audit').insert({email,role:'CLIENTE',event:'CENTRAL_YM_EVENT_CANCELLED',metadata:{client_id:clientId,event_id:b.event_id,reason:reason||null}});
+      return reply(200,{ok:true,event:update.data},origin);
     }
     if(action==='APPROVAL_ACTION'&&uuid(b.approval_id)){
       const act=text(b.approval_action,40);if(!['APROVADO','AJUSTE_SOLICITADO','COMENTARIO'].includes(act))return reply(400,{ok:false,error:'invalid_approval_action'},origin);
