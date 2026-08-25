@@ -6,8 +6,12 @@ function assert(cond, msg) {
 
 const migration = fs.readFileSync('supabase/migrations/20260808120304_create_motor_vos_core_v1.sql', 'utf8');
 const hardening = fs.readFileSync('supabase/migrations/20260808120621_harden_motor_vos_core_v1.sql', 'utf8');
+const dataGate = fs.readFileSync('supabase/migrations/20260824232936_add_ver_internal_data_gate.sql', 'utf8');
 const edge = fs.readFileSync('supabase/functions/create-vos-case/index.ts', 'utf8');
 const verActions = fs.readFileSync('supabase/functions/motor-ver-actions/index.ts', 'utf8');
+const verData = fs.readFileSync('supabase/functions/motor-ver-data/index.ts', 'utf8');
+const caseBundle = fs.readFileSync('supabase/functions/motor-case-bundle/index.ts', 'utf8');
+const orderActions = fs.readFileSync('supabase/functions/motor-order-actions/index.ts', 'utf8');
 const orderPrep = fs.readFileSync('supabase/functions/motor-order-prep/index.ts', 'utf8');
 const motorUi = fs.readFileSync('motor-vos.html', 'utf8');
 const architecture = fs.readFileSync('docs/ETAPA4_ARQUITETURA_MOTOR_WEB_VOS_V1.md', 'utf8');
@@ -50,8 +54,27 @@ for (const action of ['UPDATE_DESTINATION','UPDATE_P8','ADD_EVIDENCE','ADD_VER_E
   assert(verActions.includes(`action===\"${action}\"`), `Ação operacional do VER ausente: ${action}`);
 }
 assert(verActions.includes('all_8p_must_be_human_validated'), 'Gate VER precisa exigir os 8Ps validados por pessoa');
-assert(verActions.includes('human_validated_by:c.email'), 'Conclusão precisa carregar validador humano');
+assert(verActions.includes('human_validated_by:email'), 'Conclusão precisa carregar validador humano');
 assert(!verActions.match(/priority_score|automatic_priority|auto_priority/i), 'VER operacional não pode priorizar automaticamente');
+
+for (const table of ['vos_ver_data_profiles','vos_business_metric_snapshots','vos_portfolio_performance']) {
+  assert(dataGate.includes(`public.${table}`), `Tabela do gate de dados ausente: ${table}`);
+}
+for (const rule of [
+  'GROSS_REVENUE','SALES_VOLUME','portfolio_declared_complete','data_quality_confirmed','periods_aligned',
+  'PUBLIC_REVIEW_ONLY_NO_VOS_CONCLUSION_OR_ORDER',
+  'internal_business_data_required_for_ver_gate',
+  'internal_business_data_required_for_conclusion',
+  'internal_business_data_required_for_order'
+]) {
+  assert(dataGate.includes(rule), `Regra do gate de dados ausente: ${rule}`);
+}
+assert(verData.includes('sb.auth.getUser(token)'), 'API de dados do VER precisa verificar a sessão no Supabase');
+assert(caseBundle.includes('sb.auth.getUser(token)'), 'Leitura do caso precisa verificar a sessão no Supabase');
+assert(verActions.includes('sb.auth.getUser(token)'), 'Ações do VER precisam verificar a sessão no Supabase');
+assert(orderActions.includes('sb.auth.getUser(token)'), 'Ações do ORDENAR precisam verificar a sessão no Supabase');
+assert(!verActions.includes('function claims('), 'Ações do VER não podem confiar apenas em claims decodificadas');
+assert(verData.includes('sharing_status:"DECLINED",analysis_mode:"PUBLIC_LIMITED"'), 'Recusa formal deve abrir apenas leitura pública limitada');
 
 assert(orderPrep.includes('gate.status!==\"APROVADO\"'), 'Preparação do ORDENAR precisa bloquear sem VER_GATE aprovado');
 assert(orderPrep.includes('human_status:\"PENDENTE\"'), 'Candidato do ORDENAR deve nascer pendente');

@@ -48,15 +48,20 @@ function tokenFrom(req) {
   return String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
 }
 
-async function authorizeInternal(token) {
-  if (!token) return false;
-  const r = await fetch(`${SUPABASE_URL}/functions/v1/motor-cases`, {
+async function fetchOfficialBundle(token, caseId) {
+  if (!token || !caseId) return null;
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/motor-case-bundle`, {
+    method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       apikey: SUPABASE_PUBLISHABLE_KEY,
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify({ case_id: caseId }),
   }).catch(() => null);
-  return Boolean(r && r.ok);
+  if (!r || !r.ok) return null;
+  const data = await r.json().catch(() => null);
+  return data?.bundle || null;
 }
 
 function clean(value, max = 12000) {
@@ -77,6 +82,35 @@ function compactCase(body) {
     destination_short_term: clean(c.destination_short_term, 2500),
     destination_success_signal: clean(c.destination_success_signal, 3000),
     status: clean(c.status, 100),
+    data_profile: {
+      sharing_status: clean(body?.data_profile?.sharing_status, 40),
+      analysis_mode: clean(body?.data_profile?.analysis_mode, 60),
+      decline_reason: clean(body?.data_profile?.decline_reason, 1200),
+      limitations_acknowledged: body?.data_profile?.limitations_acknowledged === true,
+    },
+    data_readiness: body?.data_readiness || {},
+    business_metrics: limitArray(body?.business_metrics, 30).map((m) => ({
+      metric_code: clean(m?.metric_code, 80),
+      metric_name: clean(m?.metric_name, 300),
+      unit: clean(m?.unit, 40),
+      period_start: clean(m?.period_start, 20),
+      period_end: clean(m?.period_end, 20),
+      value: Number.isFinite(Number(m?.value)) ? Number(m.value) : null,
+      source_type: clean(m?.source_type, 80),
+      source_ref: clean(m?.source_ref, 500),
+      validation_status: clean(m?.validation_status, 40),
+    })),
+    portfolio_performance: limitArray(body?.portfolio_performance, 80).map((p) => ({
+      portfolio_item: clean(p?.portfolio_item, 400),
+      portfolio_category: clean(p?.portfolio_category, 200),
+      period_start: clean(p?.period_start, 20),
+      period_end: clean(p?.period_end, 20),
+      units_sold: Number.isFinite(Number(p?.units_sold)) ? Number(p.units_sold) : null,
+      gross_revenue: Number.isFinite(Number(p?.gross_revenue)) ? Number(p.gross_revenue) : null,
+      source_type: clean(p?.source_type, 80),
+      source_ref: clean(p?.source_ref, 500),
+      validation_status: clean(p?.validation_status, 40),
+    })),
     p8_coverage: limitArray(body?.p8_coverage, 8).map((p) => ({
       p8_code: clean(p?.p8_code, 80),
       p8_label: clean(p?.p8_label, 160),
@@ -140,6 +174,8 @@ REGRAS INVIOLÁVEIS:
 8. Sempre diferencie “há indício” de “está provado”. Se não houver evidência suficiente, resultado_preliminar deve ser INCONCLUSIVO.
 9. O campo texto_sugerido_campo_resultado deve ser algo que o aplicador possa realmente usar como ponto de partida em “O que você encontrou?”, deixando explícito o que veio dos dados e o que ainda depende de validação.
 10. Não recomende produto YM nesta etapa. O objetivo é investigação.
+11. Os KPIs internos e o desempenho do portfólio fazem parte da evidência central do VER. Cruze-os com as demais evidências, respeitando período, fonte e validação.
+12. Se analysis_mode for PUBLIC_LIMITED, declare no início que se trata de leitura pública limitada por recusa de compartilhamento; resultado_preliminar deve ser INCONCLUSIVO e confiança BAIXA. Não formule conclusão causal nem orientação operacional definitiva.
 
 Para CADA hipótese recebida, devolva uma análise específica e útil. Não repita a hipótese genérica original.
 
@@ -250,7 +286,6 @@ export default async function handler(req, res) {
   if (cors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   const token = tokenFrom(req);
-  if (!(await authorizeInternal(token))) return res.status(401).json({ ok: false, error: 'internal_session_required' });
 
   let body = req.body;
   if (typeof body === 'string') {
@@ -258,8 +293,16 @@ export default async function handler(req, res) {
   }
   if (!body || typeof body !== 'object') return res.status(400).json({ ok: false, error: 'invalid_body' });
 
-  const context = compactCase(body);
-  if (!context.id) return res.status(400).json({ ok: false, error: 'case_required' });
+  const requestedCaseId = clean(body?.case?.id || body?.case_id, 80);
+  if (!requestedCaseId) return res.status(400).json({ ok: false, error: 'case_required' });
+  const officialBundle = await fetchOfficialBundle(token, requestedCaseId);
+  if (!officialBundle) return res.status(401).json({ ok: false, error: 'internal_session_or_case_required' });
+  const context = compactCase(officialBundle);
+  const mode = context.data_profile.analysis_mode;
+  const ready = context.data_readiness?.ready_for_full_vos === true;
+  if (!ready && mode !== 'PUBLIC_LIMITED') {
+    return res.status(409).json({ ok: false, error: 'internal_business_data_required_for_analysis', data_readiness: context.data_readiness });
+  }
   if (!context.hypotheses.length) return res.status(400).json({ ok: false, error: 'hypotheses_required' });
 
   const userPrompt = `Analise o caso abaixo. Concentre-se nas hipóteses recebidas e produza uma leitura realmente útil para o aplicador.\n\nCASO MOTOR VOS:\n${JSON.stringify(context, null, 2)}`;
@@ -302,6 +345,17 @@ export default async function handler(req, res) {
   let analyses;
   try {
     analyses = validateAnalyses(result.parsed, context);
+    if (mode === 'PUBLIC_LIMITED') {
+      analyses = analyses.map((row) => ({
+        ...row,
+        analysis: {
+          ...row.analysis,
+          resultado_preliminar: 'INCONCLUSIVO',
+          confianca_preliminar: 'BAIXA',
+          justificativa_preliminar: `Leitura pública limitada: o cliente optou por não compartilhar os dados internos mínimos. ${clean(row.analysis?.justificativa_preliminar, 1200)}`.trim(),
+        },
+      }));
+    }
   } catch (e) {
     console.error('MOTOR IA validação falhou', String(e));
     return res.status(502).json({ ok: false, error: 'ai_invalid_json' });
@@ -314,6 +368,7 @@ export default async function handler(req, res) {
     model: result.model,
     provider: result.provider,
     analyses,
-    contract_version: 'VOS_AI_ANALYSIS_1.1',
+    analysis_mode: mode,
+    contract_version: 'VOS_AI_ANALYSIS_1.2',
   });
 }
