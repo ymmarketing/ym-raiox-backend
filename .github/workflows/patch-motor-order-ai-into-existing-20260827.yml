@@ -1,0 +1,33 @@
+name: Patch MOTOR ORDENAR AI into existing endpoint
+
+on:
+  push:
+    paths:
+      - 'scripts/patch_motor_order_ai_into_existing_20260827.py'
+      - '.github/workflows/patch-motor-order-ai-into-existing-20260827.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Patch existing MOTOR AI endpoint
+        run: python scripts/patch_motor_order_ai_into_existing_20260827.py
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add api/motor/analise-ia.js api/motor/ordenar-ia.js
+          git commit -m "MOTOR: integra sugestões do ORDENAR na IA existente"
+          git push
