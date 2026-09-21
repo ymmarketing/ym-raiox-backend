@@ -23,6 +23,12 @@ process.env.ALLOWED_ORIGINS = 'https://ym.github.io,https://raiox.vercel.app';
 process.env.SITE_URL = 'https://ym.github.io';
 process.env.CODIGO_MESTRE = 'YM-MASTER-TESTE99';
 process.env.CODIGO_SALT = 'YM-RAIOX-2026';
+const CODIGO_EXECUCAO_TESTE = 'YM-EXEC-TST1';
+process.env.CODIGO_EXECUCAO_MESTRE_HASH = crypto
+  .createHash('sha256')
+  .update(process.env.CODIGO_SALT + CODIGO_EXECUCAO_TESTE)
+  .digest('hex');
+process.env.CODIGO_EXECUCAO_MESTRE_EXPIRA_EM = '2099-12-31T23:59:59.000Z';
 
 /* hashes de códigos FICTÍCIOS, só para teste. Os reais não entram aqui. */
 const HASHES_TESTE = [
@@ -214,7 +220,7 @@ console.log('\n═══ CRIAR PAGAMENTO ═══');
 let REF = null;
 await teste('cria cobrança e devolve ref + paymentUrl', async () => {
   const res = criarRes();
-  await criar(criarReq('POST', { body: { nome: 'Ana', email: 'ana@teste.com' } }), res);
+  await criar(criarReq('POST', { body: { nome: 'Ana', email: 'ana@teste.com', documento: '52998224725' } }), res);
   assert.equal(res._status, 200, JSON.stringify(res._json));
   assert.equal(res._json.ok, true);
   assert.match(res._json.ref, /^ym_raiox_\d+_[a-f0-9]+$/);
@@ -364,7 +370,7 @@ console.log('\n═══ WEBHOOK — valor menor que o esperado ═══');
 await teste('pagamento de valor menor NÃO aprova', async () => {
   // nova cobrança
   const rc = criarRes();
-  await criar(criarReq('POST', { body: { email: 'b@t.com' } }), rc);
+  await criar(criarReq('POST', { body: { email: 'b@t.com', documento: '52998224725' } }), rc);
   const ref2 = rc._json.ref;
   let pid2 = null;
   for (const [id, p] of asaasState.pagamentos) if (p.externalReference === ref2) pid2 = id;
@@ -393,7 +399,7 @@ await teste('relatório SEM ref é bloqueado (403)', async () => {
 });
 await teste('relatório com ref NÃO aprovada é bloqueado (403)', async () => {
   const rc = criarRes();
-  await criar(criarReq('POST', { body: {} }), rc);
+  await criar(criarReq('POST', { body: { documento: '52998224725' } }), rc);
   const res = criarRes();
   await relatorio(criarReq('POST', { body: { diagnostico: DIAG, ref: rc._json.ref } }), res);
   assert.equal(res._status, 403);
@@ -401,7 +407,7 @@ await teste('relatório com ref NÃO aprovada é bloqueado (403)', async () => {
 await teste('relatório com ref aprovada funciona', async () => {
   // cria e aprova
   const rc = criarRes();
-  await criar(criarReq('POST', { body: { email: 'ok@t.com' } }), rc);
+  await criar(criarReq('POST', { body: { email: 'ok@t.com', documento: '52998224725' } }), rc);
   const ref3 = rc._json.ref;
   let pid3 = null;
   for (const [id, p] of asaasState.pagamentos) if (p.externalReference === ref3) pid3 = id;
@@ -454,7 +460,7 @@ await teste('origem estranha NÃO recebe a própria origem', async () => {
 console.log('\n═══ CALLBACK DE RETORNO ═══');
 await teste('cobrança leva callback com a ref na URL', async () => {
   const res = criarRes();
-  await criar(criarReq('POST', { body: {} }), res);
+  await criar(criarReq('POST', { body: { documento: '52998224725' } }), res);
   const b = asaasState.ultimoCorpo;
   assert.ok(b.callback, 'não enviou callback');
   assert.ok(b.callback.successUrl.includes('?ref='), 'successUrl sem ref');
@@ -465,7 +471,7 @@ await teste('cobrança leva callback com a ref na URL', async () => {
 console.log('\n═══ VALOR EXATO (R$ 97) ═══');
 await teste('pagamento MAIOR que 97 também não aprova', async () => {
   const rc = criarRes();
-  await criar(criarReq('POST', { body: {} }), rc);
+  await criar(criarReq('POST', { body: { documento: '52998224725' } }), rc);
   const ref = rc._json.ref;
   let pid = null;
   for (const [id, p] of asaasState.pagamentos) if (p.externalReference === ref) pid = id;
@@ -484,7 +490,7 @@ await teste('pagamento MAIOR que 97 também não aprova', async () => {
 });
 await teste('PAYMENT_CONFIRMED com valor exato → approved', async () => {
   const rc = criarRes();
-  await criar(criarReq('POST', { body: {} }), rc);
+  await criar(criarReq('POST', { body: { documento: '52998224725' } }), rc);
   const ref = rc._json.ref;
   let pid = null;
   for (const [id, p] of asaasState.pagamentos) if (p.externalReference === ref) pid = id;
@@ -566,6 +572,21 @@ await teste('TRAVA: mestre é recusado em ASAAS_ENV=production', async () => {
   process.env.ASAAS_ENV = salvo;
   assert.equal(res._status, 403, 'mestre passou em produção!');
 });
+await teste('mestre temporário de execução funciona em produção', async () => {
+  const salvo = process.env.ASAAS_ENV;
+  process.env.ASAAS_ENV = 'production';
+  const res = criarRes();
+  await manual(criarReq('POST', { body: { codigo: CODIGO_EXECUCAO_TESTE } }), res);
+  process.env.ASAAS_ENV = salvo;
+  assert.equal(res._status, 200, JSON.stringify(res._json));
+  assert.equal(res._json.tipo, 'mestre_execucao');
+  assert.match(res._json.ref, /_mestreexec[a-f0-9]+$/);
+});
+await teste('mestre temporário é reutilizável durante a validade', async () => {
+  const res = criarRes();
+  await manual(criarReq('POST', { body: { codigo: CODIGO_EXECUCAO_TESTE } }), res);
+  assert.equal(res._status, 200);
+});
 await teste('rate limit: 6ª tentativa do mesmo IP → 429', async () => {
   const ip = '198.51.100.99';
   let ultimo = 0;
@@ -591,6 +612,8 @@ await teste('código de cliente NÃO aparece em texto no backend', async () => {
   const src = fs.readFileSync(new URL('../api/acesso/manual.js', import.meta.url), 'utf8');
   assert.ok(!src.includes('YM-TEST-0001'), 'código em claro no backend!');
   assert.ok(!src.includes('YM-TEST-0002'), 'código em claro no backend!');
+  const masterSrc = fs.readFileSync(new URL('../lib/execution-master.js', import.meta.url), 'utf8');
+  assert.ok(!masterSrc.includes(CODIGO_EXECUCAO_TESTE), 'mestre temporário em claro no backend!');
 });
 
 console.log('\n═══ RELATÓRIO com ref de acesso manual ═══');

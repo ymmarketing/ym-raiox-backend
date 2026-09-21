@@ -8,6 +8,7 @@ import { aplicarCors, exigirMetodo } from '../lib/cors.js';
 import { store, temRedis } from '../lib/store.js';
 import { temChaveAsaas, BASE_URL } from '../lib/asaas.js';
 import { temChaveAnthropic } from '../lib/anthropic.js';
+import { statusMestreExecucao } from '../lib/execution-master.js';
 
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return;
@@ -20,6 +21,7 @@ export default async function handler(req, res) {
     redis = { ok: false, tipo: 'upstash', erro: 'sem conexão' };
   }
 
+  const mestreExecucao = statusMestreExecucao();
   const config = {
     asaas: temChaveAsaas,
     asaasAmbiente: process.env.ASAAS_ENV || 'production',
@@ -38,6 +40,8 @@ export default async function handler(req, res) {
     codigoMestreAtivo:
       Boolean(process.env.CODIGO_MESTRE) &&
       (process.env.ASAAS_ENV || 'production').toLowerCase() !== 'production',
+    codigoMestreExecucaoAtivo: mestreExecucao.ativo,
+    codigoMestreExecucaoExpiraEm: mestreExecucao.expiraEm,
   };
 
   const faltando = [];
@@ -56,13 +60,16 @@ export default async function handler(req, res) {
   if (config.codigoMestreAtivo) {
     alertas.push('Código-mestre ATIVO (sandbox). Isto é esperado em ambiente de teste.');
   }
+  if (config.codigoMestreExecucaoAtivo) {
+    alertas.push(`Código mestre temporário de execução ativo até ${config.codigoMestreExecucaoExpiraEm}.`);
+  }
 
   const pronto = faltando.length === 0 && redis.ok;
 
   res.status(200).json({
     ok: true,
     pronto,
-    versao: '1.1.0',
+    versao: '1.2.0',
     ts: new Date().toISOString(),
     config,
     faltando,

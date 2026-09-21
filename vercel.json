@@ -6,6 +6,10 @@
     }
   },
   "redirects": [
+    { "source": "/CRM", "destination": "https://ymnegocios.com.br/CRM/", "permanent": false },
+    { "source": "/CRM/", "destination": "https://ymnegocios.com.br/CRM/", "permanent": false },
+    { "source": "/areadocliente", "destination": "https://ymnegocios.com.br/areadocliente/", "permanent": false },
+    { "source": "/areadocliente/", "destination": "https://ymnegocios.com.br/areadocliente/", "permanent": false },
     { "source": "/VOS", "destination": "/MOTOR", "permanent": false },
     { "source": "/VOS/", "destination": "/MOTOR", "permanent": false }
   ],

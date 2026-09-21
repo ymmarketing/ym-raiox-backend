@@ -28,6 +28,10 @@ import {
   limitarTaxa,
   sha256Hex,
 } from '../../lib/security.js';
+import {
+  codigoMestreExecucaoValido,
+  statusMestreExecucao,
+} from '../../lib/execution-master.js';
 
 /* sal do projeto — precisa bater com o usado em gerar_codigos.py */
 const CODIGO_SALT = process.env.CODIGO_SALT || 'YM-RAIOX-2026';
@@ -128,7 +132,37 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, ref, status: STATUS.APPROVED, tipo: 'mestre' });
   }
 
-  /* ───────── 2. código de cliente (uso único) ───────── */
+  /* ───────── 2. mestre temporário de execução (inclusive produção) ─────────
+     Usado apenas durante a contingência operacional sem Asaas. O código é
+     reutilizável, mas expira automaticamente e só o hash salgado é publicado. */
+  if (codigoMestreExecucaoValido(codigo)) {
+    const ref = `ym_raiox_${Date.now()}_mestreexec${Math.random().toString(16).slice(2, 10)}`;
+    const mestreExecucao = statusMestreExecucao();
+    await store.salvar(ref, {
+      ref,
+      status: STATUS.APPROVED,
+      paymentId: null,
+      customer: 'MESTRE EXECUÇÃO TEMPORÁRIA',
+      value: 0,
+      origem: 'codigo_mestre_execucao',
+      expiraEm: mestreExecucao.expiraEm,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    log('info', 'Acesso liberado pelo mestre temporário de execução.', {
+      ip,
+      ref,
+      expiraEm: mestreExecucao.expiraEm,
+    });
+    return res.status(200).json({
+      ok: true,
+      ref,
+      status: STATUS.APPROVED,
+      tipo: 'mestre_execucao',
+    });
+  }
+
+  /* ───────── 3. código de cliente (uso único) ───────── */
   const hash = await sha256Hex(CODIGO_SALT + codigo);
 
   if (!CODIGOS_HASH.includes(hash)) {

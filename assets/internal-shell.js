@@ -1,6 +1,6 @@
 (()=> {
- const SUPABASE_URL='https://nxmcqkhaolplyzapccaf.supabase.co';
- const PUBLISHABLE_KEY='sb_publishable_z7XBvN1Yxao3yooH3dV5Bg_I2tBojp5';
+ const SUPABASE_URL='https://srzdikgztpdtwbggwniz.supabase.co';
+ const PUBLISHABLE_KEY='sb_publishable_OGZsWJSj2noU3Dd78pk48g__eEKE3xT';
  const sb=window.supabase.createClient(SUPABASE_URL,PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const isHttp=v=>/^https?:\/\//i.test(String(v||''));

@@ -39,14 +39,14 @@ assert(crm.includes('crm.kpis')&&crm.includes('reading_sent')&&crm.includes('rai
 
 for(const action of ['CREATE_CANDIDATE','VALIDATE_CANDIDATE','REJECT_CANDIDATE']) assert(order.includes(action),`API ORDENAR sem ação: ${action}`);
 assert(order.includes('sequence_order'),'ORDENAR sem sequência humana');
-assert(order.includes('validated_by:c.email'),'ORDENAR não identifica validador humano');
+assert(order.includes('validated_by:email'),'ORDENAR não identifica validador humano');
 assert(order.includes('automatic_priority:false'),'Contrato ORDENAR não declara ausência de prioridade automática');
 assert(order.includes('human_validation_required:true'),'Contrato ORDENAR não exige validação humana');
 assert(!order.match(/anthropic|openai|gemini|claude|ranking|priority_score/i),'API ORDENAR não pode usar IA/ranking automático');
 
 for(const action of ['SET_INITIAL_READING','SET_CONTACT_STATUS','UPDATE_PROFILE','SET_NEXT_ACTION','SET_ROUTE']) assert(crmApi.includes(`action==='${action}'`),`API CRM sem ação: ${action}`);
-assert(crmApi.includes('READING_STATUSES')&&crmApi.includes('CONTACT_STATUSES'),'API CRM precisa validar vocabulários fechados');
-assert(crmApi.includes('READING_REACHED')&&crmApi.includes('RAIOX_REACHED'),'API CRM precisa manter KPIs históricos/cumulativos');
+assert(crmApi.includes("const READ=['NAO_INICIADA'")&&crmApi.includes("CONTACT=['NAO_INICIADO'"),'API CRM precisa validar vocabulários fechados');
+assert(crmApi.includes("if(x.to_stage==='LEITURA_ENVIADA')")&&crmApi.includes("if(x.to_stage==='RAIOX_ENTREGUE')"),'API CRM precisa manter KPIs históricos/cumulativos');
 assert(crmApi.includes('initial_reading_url'),'API CRM não expõe arquivo/link da Leitura Inicial');
 assert(crmApi.includes('crm_stage_history'),'API CRM não expõe histórico de etapas');
 assert(!crmApi.match(/anthropic|openai|gemini|claude|auto.?route|route.?score/i),'CRM não pode decidir rota por IA/heurística');
