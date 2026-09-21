@@ -3,6 +3,7 @@ function assert(cond,msg){if(!cond)throw new Error(msg);}
 const core=fs.readFileSync('supabase/migrations/20260808140400_create_crm_essencial_v1.sql','utf8');
 const hard=fs.readFileSync('supabase/migrations/20260808140500_harden_crm_essencial_v1.sql','utf8');
 const manual=fs.readFileSync('supabase/migrations/20260808140600_add_crm_manual_lead_v1.sql','utf8');
+const stageSideEffects=fs.readFileSync('supabase/migrations/20260921195500_split_crm_stage_side_effect_trigger.sql','utf8');
 const edge=fs.readFileSync('supabase/functions/motor-crm/index.ts','utf8');
 const ui=fs.readFileSync('crm-vos.html','utf8');
 
@@ -16,6 +17,9 @@ assert(core.includes("current_stage='ROTA_RECOMENDADA'"),'Validação humana nã
 assert(core.includes("Nenhuma rota foi definida automaticamente"),'Importação de Intake não declara ausência de rota automática');
 assert(hard.includes('crm_route_stage_requires_human_check'),'Hardening do estágio de rota está ausente');
 assert(manual.includes("'LEAD_MAPEADO'"),'Lead manual não nasce em Lead Mapeado');
+assert(stageSideEffects.includes('before insert or update on public.crm_opportunities'),'Campos da oportunidade não são preparados antes da gravação');
+assert(stageSideEffects.includes('after insert or update on public.crm_opportunities'),'Efeitos dependentes não aguardam a oportunidade existir');
+assert(stageSideEffects.indexOf('after insert or update on public.crm_opportunities') < stageSideEffects.indexOf('drop function if exists public.crm_sync_stage_side_effects()'),'Migração remove a função antiga antes de instalar o gatilho seguro');
 assert(edge.includes("SET_ROUTE"),'API não expõe validação explícita de rota');
 assert(edge.includes("route_rationale_required"),'API não exige justificativa de rota');
 assert(!edge.match(/anthropic|openai|gemini|claude/i),'CRM não deve usar IA para decidir pipeline/rota');
