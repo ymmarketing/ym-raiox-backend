@@ -24,6 +24,7 @@ process.env.SITE_URL = 'https://ym.github.io';
 process.env.CODIGO_MESTRE = 'YM-MASTER-TESTE99';
 process.env.CODIGO_SALT = 'YM-RAIOX-2026';
 const CODIGO_EXECUCAO_TESTE = 'YM-EXEC-TST1';
+let REF_MESTRE_EXECUCAO = null;
 process.env.CODIGO_EXECUCAO_MESTRE_HASH = crypto
   .createHash('sha256')
   .update(process.env.CODIGO_SALT + CODIGO_EXECUCAO_TESTE)
@@ -581,6 +582,13 @@ await teste('mestre temporário de execução funciona em produção', async () 
   assert.equal(res._status, 200, JSON.stringify(res._json));
   assert.equal(res._json.tipo, 'mestre_execucao');
   assert.match(res._json.ref, /_mestreexec[a-f0-9]+$/);
+  REF_MESTRE_EXECUCAO = res._json.ref;
+});
+await teste('ref do mestre temporário permanece aprovada na consulta de status', async () => {
+  const res = criarRes();
+  await status(criarReq('GET', { query: { ref: REF_MESTRE_EXECUCAO } }), res);
+  assert.equal(res._status, 200);
+  assert.equal(res._json.status, 'approved', JSON.stringify(res._json));
 });
 await teste('mestre temporário é reutilizável durante a validade', async () => {
   const res = criarRes();
@@ -623,6 +631,12 @@ await teste('ref criada por código manual gera relatório', async () => {
   const ref = rc._json.ref;
   const res = criarRes();
   await relatorio(criarReq('POST', { body: { diagnostico: DIAG, ref } }), res);
+  assert.equal(res._status, 200, JSON.stringify(res._json));
+  assert.ok(res._json.relatorio);
+});
+await teste('ref do mestre temporário gera relatório', async () => {
+  const res = criarRes();
+  await relatorio(criarReq('POST', { body: { diagnostico: DIAG, ref: REF_MESTRE_EXECUCAO } }), res);
   assert.equal(res._status, 200, JSON.stringify(res._json));
   assert.ok(res._json.relatorio);
 });
