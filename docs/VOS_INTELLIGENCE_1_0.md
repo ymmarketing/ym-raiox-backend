@@ -106,6 +106,18 @@ Classe C: diagnóstico de mensuração + plano de instrumentação; sem projeç�
 - review_schedule
 - sources
 
+## Contratos técnicos fechados no primeiro checkpoint do Work
+- `VOS_INPUT_1.0`: entrada canônica, métricas normalizadas e fontes permitidas.
+- `VOS_DIAGNOSTIC_1.0`: saída interpretativa dos 3 Pilares e 8 Ps.
+- `RX_CANONICO_1.0`: questionário histórico de 30 respostas, preservado.
+- `RX_CANONICO_2.0`: questionário de 18 respostas efetivamente liberado após o pagamento, agora também mapeado para o VIE.
+
+O diagnóstico estruturado não contém targets, benchmarks ou projeções. Esses números permanecem em módulos determinísticos posteriores. A IA recebe KPIs já calculados e só pode interpretar evidências usando IDs presentes em `allowed_sources`.
+
+O Data Quality Gate agora reprova números inválidos, percentuais fora da faixa e fontes com períodos misturados; relações improváveis de funil geram alerta de revisão sem transformar automaticamente o dado em erro.
+
+Cada execução da camada interpretativa retorna auditoria mínima com versão do motor, versão do contrato, modelo, tokens, duração, status e identificador da resposta. Custo será conectado ao registro persistente na etapa de auditoria de IA, sem alterar produção nesta branch.
+
 ## Homologação YM
 A YM será tratada como cliente real, mas sem cobrança Asaas na execução interna. O caminho de pagamento real continuará preservado e será testado separadamente antes do gate de produção.
 
