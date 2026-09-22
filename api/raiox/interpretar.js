@@ -23,7 +23,7 @@ import { syncRaioxV22ToCrm } from '../../lib/raiox-crm-sync.js';
 import { buildDeclaredIntake, VOS_DECLARED_METRICS } from '../../lib/vos-intelligence-intake-v1.js';
 import { generateVosIntelligenceReport, VOS_REPORT_MODEL, VOS_REPORT_VERSION } from '../../lib/vos-intelligence-report-v1.js';
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const EXIGE_PAGAMENTO = String(process.env.REQUER_PAGAMENTO_RELATORIO ?? 'true').toLowerCase() !== 'false';
 const REQUIRED_V2 = Array.from({ length: 18 }, (_, i) => `Q${String(i + 1).padStart(2, '0')}`);
