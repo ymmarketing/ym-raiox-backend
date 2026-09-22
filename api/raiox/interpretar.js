@@ -14,14 +14,13 @@ import {
   REPORT_VERSION,
 } from '../../lib/raiox-report-v1-1.js';
 import {
-  temOpenAI,
   OPENAI_MODEL,
-  uploadImageToOpenAI,
   deleteOpenAIFile,
 } from '../../lib/raiox-v2-openai.js';
 import { syncRaioxV22ToCrm } from '../../lib/raiox-crm-sync.js';
 import { buildDeclaredIntake, VOS_DECLARED_METRICS } from '../../lib/vos-intelligence-intake-v1.js';
 import { generateVosIntelligenceReport, VOS_REPORT_MODEL, VOS_REPORT_VERSION } from '../../lib/vos-intelligence-report-v1.js';
+import { temVosAiRuntime } from '../../lib/vos-intelligence-diagnostic-v1.js';
 
 export const maxDuration = 300;
 
@@ -144,7 +143,7 @@ function decodeDataUrl(v) {
   const m = String(v || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
   if (!m) throw new Error('Formato de imagem não aceito.');
   const buffer = Buffer.from(m[2], 'base64');
-  if (!buffer.length || buffer.length > 650 * 1024) throw new Error('A imagem deve ter no máximo 650 KB após compressão.');
+  if (!buffer.length || buffer.length > 420 * 1024) throw new Error('A imagem deve ter no máximo 420 KB após compressão.');
   return { mime: m[1], buffer };
 }
 
@@ -165,7 +164,7 @@ async function handleV2Get(req, res, action) {
   }
   if (action === 'status') {
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json({ ok: true, openai_configured: temOpenAI, model: VOS_REPORT_MODEL || OPENAI_MODEL, report_version: VOS_REPORT_VERSION });
+    return res.status(200).json({ ok: true, ai_configured: temVosAiRuntime, provider: process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_ENV ? 'vercel_ai_gateway' : 'openai_direct', model: VOS_REPORT_MODEL || OPENAI_MODEL, report_version: VOS_REPORT_VERSION });
   }
   if (action !== 'draft' && action !== 'draft_proxy') return res.status(400).json({ ok: false, error: 'Ação inválida.' });
   const ref = clean(req.query?.ref, 220);
@@ -198,7 +197,7 @@ async function handleSaveDraft(req, res, body) {
 }
 
 async function handleUpload(req, res, body) {
-  if (!temOpenAI) return res.status(503).json({ ok: false, error: 'OpenAI ainda não configurada no backend.', code: 'OPENAI_NOT_CONFIGURED' });
+  if (!temVosAiRuntime) return res.status(503).json({ ok: false, error: 'A conexão de IA ainda não está configurada no backend.', code: 'AI_NOT_CONFIGURED' });
   const ref = clean(body.ref, 220);
   const session = await approvedSession(ref);
   if (!session) return res.status(403).json({ ok: false, error: 'Acesso não confirmado.' });
@@ -212,17 +211,18 @@ async function handleUpload(req, res, body) {
     const base = (clean(body.name, 100).replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9._-]+/g, '_') || `print-${Date.now()}`).slice(0, 90);
     const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
     const name = `${base}.${ext}`;
-    const uploaded = await uploadImageToOpenAI({ buffer, mime, name });
-    const item = { file_id: uploaded.file_id, name, context: clean(body.context, 1200), bytes: uploaded.bytes, uploadedAt: new Date().toISOString() };
+    const imageId = `img_${crypto.randomBytes(16).toString('hex')}`;
+    await store.salvarImagem(ref, imageId, `data:${mime};base64,${buffer.toString('base64')}`);
+    const item = { file_id: imageId, name, context: clean(body.context, 1200), bytes: buffer.length, storage: 'temporary_data_url', uploadedAt: new Date().toISOString() };
     const latest = await approvedSession(ref);
     const currentUploads = Array.isArray(latest?.raioxV2Uploads) ? latest.raioxV2Uploads : [];
     if (currentUploads.length >= 6) {
-      await deleteOpenAIFile(item.file_id).catch(() => {});
+      await store.removerImagem(ref, imageId).catch(() => {});
       return res.status(400).json({ ok: false, error: 'O limite atual é de 6 prints por Raio-X.' });
     }
     const saved = await store.atualizar(ref, { raioxV2Uploads: [...currentUploads, item] });
     const savedUploads = Array.isArray(saved.raioxV2Uploads) ? saved.raioxV2Uploads : [];
-    log('info', 'Print vinculado ao Raio-X V2', { ref, file_id: item.file_id, bytes: item.bytes, uploads: savedUploads.length });
+    log('info', 'Print vinculado ao Raio-X V2', { ref, image_id: item.file_id, bytes: item.bytes, storage: item.storage, uploads: savedUploads.length });
     return res.status(200).json({ ok: true, file: item, uploads: savedUploads });
   } catch (e) {
     return res.status(400).json({ ok: false, error: clean(e?.message || 'Falha no upload.', 300) });
@@ -231,7 +231,7 @@ async function handleUpload(req, res, body) {
 
 async function handleGenerateV2(req, res, body) {
   if (!temRedis) return res.status(503).json({ ok: false, error: 'Sessão indisponível no momento.' });
-  if (!temOpenAI) return res.status(503).json({ ok: false, error: 'OpenAI ainda não configurada no backend.', code: 'OPENAI_NOT_CONFIGURED', model: VOS_REPORT_MODEL || OPENAI_MODEL });
+  if (!temVosAiRuntime) return res.status(503).json({ ok: false, error: 'A conexão de IA ainda não está configurada no backend.', code: 'AI_NOT_CONFIGURED', model: VOS_REPORT_MODEL || OPENAI_MODEL });
   const rateOk = await limitarTaxa(store, `raiox-v2:${ipOf(req)}`, 5);
   if (!rateOk) return res.status(429).json({ ok: false, error: 'Muitas tentativas. Aguarde um minuto.' });
   const ref = clean(body.ref, 220);
@@ -299,7 +299,20 @@ async function handleGenerateV2(req, res, body) {
 
     // VOS 1.0 usa exclusivamente o que o cliente declarou nesta execução.
     // Nenhuma leitura de CRM, Reportei ou outra base histórica ocorre neste caminho.
-    const result = await generateVosIntelligenceReport(intake);
+    const hydratedImages = await Promise.all(intake.images.map(async image => {
+      if (!String(image.file_id || '').startsWith('img_')) return image; // sessão legada da OpenAI Files
+      const imageUrl = await store.buscarImagem(ref, image.file_id);
+      if (!imageUrl) throw new Error(`Imagem temporária indisponível para análise: ${image.id}`);
+      return { ...image, image_url: imageUrl };
+    }));
+    const analysisIntake = { ...intake, images: hydratedImages };
+    log('info', 'VOS Intelligence iniciando análise multimodal', {
+      ref,
+      links: intake.links.map(link => link.id),
+      images: intake.images.map(image => image.id),
+      provider_preference: hydratedImages.some(image => image.image_url) ? 'vercel_ai_gateway' : 'openai_direct_legacy',
+    });
+    const result = await generateVosIntelligenceReport(analysisIntake);
     await store.atualizar(ref, {
       raioxV2Status: 'completed',
       raioxV2CompletedAt: new Date().toISOString(),
@@ -312,10 +325,20 @@ async function handleGenerateV2(req, res, body) {
       raioxV2Audit: result.audit,
     });
 
-    await Promise.all(intake.images.map(x => deleteOpenAIFile(x.file_id)));
-    if (intake.images.length) await store.atualizar(ref, { raioxV2Uploads: [], raioxV2FilesDeletedAt: new Date().toISOString() });
+    await Promise.all(intake.images.map(image => String(image.file_id || '').startsWith('img_')
+      ? store.removerImagem(ref, image.file_id)
+      : deleteOpenAIFile(image.file_id)));
+    if (intake.images.length) await store.atualizar(ref, { raioxV2Uploads: [], raioxV2MaterialsPurgedAt: new Date().toISOString() });
 
-    log('info', 'VOS Intelligence 1.0 concluído sem leitura histórica e sem sync de CRM', { ref, model: VOS_REPORT_MODEL, cost_usd: result.cost?.estimated_total_usd, links: intake.links.length, images: intake.images.length });
+    log('info', 'VOS Intelligence 1.0 concluído sem leitura histórica e sem sync de CRM', {
+      ref,
+      provider: result.audit?.provider,
+      model: result.audit?.model || VOS_REPORT_MODEL,
+      cost_usd: result.cost?.estimated_total_usd,
+      web_search_calls: result.audit?.web_search_calls || 0,
+      links: result.report?.source_analysis?.links?.map(link => ({ id: link.id, fetch_status: link.status, ai_access_status: link.ai_access_status, evidence_basis: link.evidence_basis })) || [],
+      images: result.report?.source_analysis?.images?.map(image => ({ id: image.id, status: image.status, evidence_basis: image.evidence_basis })) || [],
+    });
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ ok: true, report: result.report, usage: result.cost, reused: false });
   } catch (e) {
