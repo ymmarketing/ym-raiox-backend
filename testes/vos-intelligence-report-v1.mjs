@@ -11,8 +11,16 @@ const coverageFor=(a,c,m)=>[
   ...Object.keys(m||{}).filter(key=>m[key]!==null&&m[key]!==undefined&&String(m[key]).trim()!=='').map(key=>({source_id:key==='metric_period'?'METRIC_PERIOD':`METRIC_${key.toUpperCase()}`,use:'supports_finding',reading:'Métrica considerada no diagnóstico.'})),
 ];
 const base={status:'validar',reading:'Precisa de evidência.',confidence:'a_validar',sources:['Q01']};
+const scorePanel={
+  overall_score:45,overall_label:'Funcional com lacunas',macro_conclusion:'A jornada possui ativos iniciais, mas ainda depende de organização para gerar demanda e medir avanço.',confidence:'consistente',
+  indicators:[
+    ['acquisition_volume','Geração de demanda',30],['audience_fit','Aderência ao público',50],['message_offer','Mensagem e oferta',55],
+    ['channel_content','Canais e conteúdo',40],['conversion_journey','Jornada de conversão',45],['operations_measurement','Operação e mensuração',50],
+  ].map(([id,name,score])=>({id,name,score,rationale:'Leitura baseada nas fontes declaradas.',confidence:'consistente',sources:['Q01']})),
+};
 const diagnostic={
   contract_version:'VOS_DIAGNOSTIC_1.0',executive_summary:'A empresa precisa instrumentar o funil antes de projetar crescimento.',
+  score_panel:structuredClone(scorePanel),
   main_bottleneck:{pillar:'Operação',title:'Mensuração',why_it_matters:'Sem baseline não há previsão confiável.',confidence:'forte',sources:['Q01']},
   pillars:['Aquisição','Posicionamento','Operação'].map(name=>({name,...base})),
   ps:['Produto','Preço','Praça','Promoção','Pessoas','Processos','Posicionamento','Performance'].map(name=>({name,...base})),
@@ -34,6 +42,8 @@ assert.equal(result.report.data_quality.grade,'C');
 assert.equal(result.report.targets.revenue.status,'TARGET_BLOCKED');
 assert.ok(result.report.playbook.selected_action_ids.includes('ACT_TRACKING_001'));
 assert.equal(result.report.content_week.status,'CONTENT_WEEK_READY');
+assert.equal(result.report.journey_score.overall_score,45);
+assert.equal(result.report.journey_score.indicators.length,6);
 
 const ymAnswers={...answers,
   Q02:'Raio-X Estratégico como porta de entrada',Q04:'Pequenas e médias empresas com alguma jornada digital',

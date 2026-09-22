@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {assessDataQuality, calculateBusinessKpis} from '../lib/vos-intelligence-v1.js';
 import {RX_V2_TO_VOS} from '../lib/vos-intelligence-mapping-v1.js';
 import {buildDiagnosticEnvelope} from '../lib/vos-intelligence-contract-v1.js';
-import {buildDiagnosticRequest, runDiagnosticAnalysis, validateDiagnosticReport, VOS_DIAGNOSTIC_SYSTEM_PROMPT} from '../lib/vos-intelligence-diagnostic-v1.js';
+import {buildDiagnosticRequest, journeyScoreBand, normalizeJourneyScorePanel, runDiagnosticAnalysis, validateDiagnosticReport, VOS_DIAGNOSTIC_SYSTEM_PROMPT} from '../lib/vos-intelligence-diagnostic-v1.js';
 
 assert.equal(Object.keys(RX_V2_TO_VOS).length,18);
 
@@ -40,8 +40,16 @@ const linkedRequest=buildDiagnosticRequest({...envelope,external_sources:[{id:'L
 assert.equal(linkedRequest.tools.some(tool=>tool.type==='web_search'),true);
 
 const base={status:'validar',reading:'Ainda precisa de evidência.',confidence:'a_validar',sources:['Q11']};
+const scorePanel={
+  overall_score:50,overall_label:'Funcional com lacunas',macro_conclusion:'A jornada possui alguma estrutura, mas ainda depende de validação e disciplina comercial.',confidence:'consistente',
+  indicators:[
+    ['acquisition_volume','Geração de demanda',30],['audience_fit','Aderência ao público',55],['message_offer','Mensagem e oferta',60],
+    ['channel_content','Canais e conteúdo',45],['conversion_journey','Jornada de conversão',50],['operations_measurement','Operação e mensuração',65],
+  ].map(([id,name,score])=>({id,name,score,rationale:'Nota sustentada pelas respostas declaradas.',confidence:'consistente',sources:['Q11']})),
+};
 const report={
   contract_version:'VOS_DIAGNOSTIC_1.0',executive_summary:'Resumo',
+  score_panel:structuredClone(scorePanel),
   main_bottleneck:{pillar:'Operação',title:'Cadência comercial',why_it_matters:'O acompanhamento não está documentado.',confidence:'consistente',sources:['Q11','Q11C']},
   pillars:['Aquisição','Posicionamento','Operação'].map(name=>({name,...base})),
   ps:['Produto','Preço','Praça','Promoção','Pessoas','Processos','Posicionamento','Performance'].map(name=>({name,...base})),
@@ -72,6 +80,11 @@ const execution=await runDiagnosticAnalysis({
 assert.equal(execution.audit.response_id,'resp_test');
 assert.equal(execution.audit.input_tokens,1200);
 assert.equal(execution.diagnostic.main_bottleneck.pillar,'Operação');
+assert.equal(execution.diagnostic.score_panel.overall_score,51);
+assert.equal(execution.diagnostic.score_panel.overall_label,'Funcional com lacunas');
+assert.equal(journeyScoreBand(81),'Maduro e integrado');
+const normalized=normalizeJourneyScorePanel({score_panel:structuredClone(scorePanel)});
+assert.equal(normalized.score_panel.overall_score,51);
 
 let gatewayUrl='',gatewayBody=null;
 const gatewayExecution=await runDiagnosticAnalysis({
