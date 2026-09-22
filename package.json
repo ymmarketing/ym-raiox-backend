@@ -11,7 +11,8 @@
     "dev": "vercel dev",
     "test:local": "node testes/smoke.js",
     "test:motor": "node testes/motor-vos-guardrails.mjs",
-    "test": "npm run test:local && npm run test:motor"
+    "test": "npm run test:local && npm run test:motor",
+    "test:vos-intelligence": "node testes/vos-intelligence-v1.mjs"
   },
   "dependencies": {
     "@vercel/oidc": "^3.8.4"
