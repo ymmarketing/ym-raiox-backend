@@ -4,6 +4,7 @@
  * Mantém RX_REPORT_1.1 (legado atual) e concentra as operações do Raio-X V2
  * na mesma Serverless Function para respeitar o limite de Functions do plano.
  */
+import crypto from 'node:crypto';
 import { aplicarCors } from '../../lib/cors.js';
 import { store, STATUS, temRedis } from '../../lib/store.js';
 import { refValida, erroSeguro, log, limitarTaxa, texto } from '../../lib/security.js';
@@ -148,6 +149,20 @@ function decodeDataUrl(v) {
 }
 
 async function handleV2Get(req, res, action) {
+  if (action === 'preview_session') {
+    if (process.env.VERCEL_ENV !== 'preview') return res.status(404).json({ ok: false, error: 'Rota não disponível.' });
+    if (!temRedis) return res.status(503).json({ ok: false, error: 'Sessão indisponível.' });
+    const rateOk = await limitarTaxa(store, `vos-preview-session:${ipOf(req)}`, 3);
+    if (!rateOk) return res.status(429).json({ ok: false, error: 'Muitas sessões em sequência. Aguarde um minuto.' });
+    const ref = `ym_raiox_${Date.now()}_mestre${crypto.randomBytes(6).toString('hex')}`;
+    const now = new Date().toISOString();
+    await store.salvar(ref, {
+      ref, status: STATUS.APPROVED, paymentId: null, customer: 'HOMOLOGAÇÃO VOS INTELLIGENCE', value: 0,
+      origem: 'vos_intelligence_preview', createdAt: now, updatedAt: now,
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    return res.redirect(302, `/vos-intelligence-client.html?ref=${encodeURIComponent(ref)}&validacao=1`);
+  }
   if (action === 'status') {
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ ok: true, openai_configured: temOpenAI, model: VOS_REPORT_MODEL || OPENAI_MODEL, report_version: VOS_REPORT_VERSION });

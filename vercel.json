@@ -18,6 +18,7 @@
     { "source": "/api/raiox/upload-v2", "destination": "/api/raiox/interpretar?action=upload_v2" },
     { "source": "/api/raiox/rascunho-v2", "destination": "/api/raiox/interpretar?action=draft_proxy" },
     { "source": "/api/raiox/status-v2", "destination": "/api/raiox/interpretar?action=status" },
+    { "source": "/api/raiox/preview-session", "destination": "/api/raiox/interpretar?action=preview_session" },
     { "source": "/api/acesso/validacao-raiox-v2", "destination": "/api/acesso/teste-raiox?v2=1" },
     { "source": "/CRM", "destination": "/CRM/index.html" },
     { "source": "/CRM/", "destination": "/CRM/index.html" },
