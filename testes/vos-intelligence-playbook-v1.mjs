@@ -26,5 +26,18 @@ const incomplete=buildContentWeek({offer:'Raio-X'});
 assert.equal(incomplete.status,'NEEDS_CONTENT_CONTEXT');
 assert.ok(incomplete.missing.includes('audience'));
 
-console.log('VOS Intelligence playbook + routine + content: OK');
+const acquisitionContent=buildContentWeek({
+  offer:'Raio-X Estratégico, como produto de entrada para gerar clareza, autoridade e abrir caminho para outros serviços.',
+  audience:'Pequenas e médias empresas de serviços que já tentaram ações digitais sem retorno claro.',
+  problem:'Aumentar vendas, melhorar processos e mensuração, organizar dados e relacionamento e comunicar melhor seu posicionamento e conteúdo.',
+  proof:'Ainda não existe volume de clientes suficiente para afirmar um padrão.',
+  objection:'Precisa entender o que o Raio-X faz, o que a YM vende, para quem serve e qual resultado recebe.',
+  signals:['lead_volume_critical'],
+  cta:'Conheça o Raio-X.',
+});
+assert.equal(acquisitionContent.strategy,'critical_acquisition_validation');
+assert.equal(acquisitionContent.items.length,5);
+assert.ok(acquisitionContent.items.every(item=>!item.caption.includes('Aumentar vendas, melhorar processos')));
+assert.ok(acquisitionContent.items.some(item=>item.title.includes('follow-up')));
 
+console.log('VOS Intelligence playbook + routine + content: OK');
