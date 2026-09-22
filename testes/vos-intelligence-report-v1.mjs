@@ -51,11 +51,11 @@ const followupDiagnostic={...diagnostic,
   main_bottleneck:{pillar:'Operação',title:'Ausência de follow-up',why_it_matters:'Os contatos não foram retomados.',confidence:'forte',sources:['Q11']},
   action_signals:['followup_baixo'],
   priorities:[{title:'Fazer follow-up',why:'Os contatos não foram retomados.',pillar:'Operação',ps:['Processos','Performance'],impact:'alto',confidence:'alto',urgency:'alto',effort:'baixo',action_signal:'followup_baixo',sources:['Q11']}],
-  source_coverage:coverageFor(ymAnswers,{Q06:'Seis meses de empresa e poucos clientes.',Q17:'Não existe formato contínuo para testar.'},ymMetrics),
+  source_coverage:coverageFor(ymAnswers,{Q03:'O produto de entrada Raio-X custa R$ 97. Os serviços realizados depois do Raio-X têm valores distintos conforme o escopo.',Q06:'Seis meses de empresa e poucos clientes.',Q17:'Não existe formato contínuo para testar.'},ymMetrics),
 };
 const ymResult=await generateVosIntelligenceReport({
   business_name:'YM Marketing & Negócios',company:{segment:'Marketing estratégico',business_model:'B2B2C',region:'Brasil',channels:['Indicação'],followup_process:ymAnswers.Q11,business_goal:ymAnswers.Q18,goal_horizon_days:90},
-  answers:ymAnswers,complements:{Q06:'Seis meses de empresa e poucos clientes.',Q17:'Não existe formato contínuo para testar.'},metrics:ymMetrics,links:[],
+  answers:{...ymAnswers,Q03:'Prefiro informar o valor'},complements:{Q03:'O produto de entrada Raio-X custa R$ 97. Os serviços realizados depois do Raio-X têm valores distintos conforme o escopo.',Q06:'Seis meses de empresa e poucos clientes.',Q17:'Não existe formato contínuo para testar.'},metrics:ymMetrics,links:[],
 },{api_key:'test-key',fetch_impl:async()=>({ok:true,status:200,text:async()=>JSON.stringify({id:'resp_ym',status:'completed',output_text:JSON.stringify(followupDiagnostic),usage:{input_tokens:1000,output_tokens:500,input_tokens_details:{cached_tokens:0}}})})});
 
 assert.equal(ymResult.report.data_quality.grade,'A');
@@ -70,5 +70,8 @@ assert.equal(ymResult.report.priorities[0].action_signal,'lead_volume_critical')
 assert.ok(ymResult.report.playbook.selected_action_ids.includes('ACT_ICP_001'));
 assert.ok(ymResult.report.playbook.selected_action_ids.includes('ACT_ACQUISITION_CYCLE_001'));
 assert.ok(!ymResult.report.playbook.selected_action_ids.includes('ACT_FOLLOWUP_001'));
+assert.equal(ymResult.report.offer_pricing.entry_price,'R$ 97');
+assert.equal(ymResult.report.offer_pricing.downstream_services_have_distinct_prices,true);
+assert.match(ymResult.report.offer_pricing.reading,/ticket m[eé]dio de R\$\s*1\.000,00 pertence ao per[ií]odo geral/i);
 
 console.log('VOS Intelligence end-to-end report: OK');
