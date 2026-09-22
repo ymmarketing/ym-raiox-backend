@@ -22,6 +22,8 @@ assert.equal(envelope.data_quality.grade,'A');
 assert.equal(envelope.kpis.lead_to_customer_pct,12.5);
 assert.equal(envelope.kpis.average_ticket,2000);
 assert.ok(envelope.allowed_sources.includes('Q11C'));
+assert.ok(envelope.allowed_sources.includes('METRIC_LEADS'));
+assert.equal(envelope.data_quality.decision_sufficiency.overall,'usable');
 assert.equal(envelope.evidence_coverage.pillars.length,3);
 assert.equal(envelope.evidence_coverage.ps.length,8);
 
@@ -39,6 +41,8 @@ const report={
   pillars:['Aquisição','Posicionamento','Operação'].map(name=>({name,...base})),
   ps:['Produto','Preço','Praça','Promoção','Pessoas','Processos','Posicionamento','Performance'].map(name=>({name,...base})),
   root_hypotheses:[{title:'Follow-up irregular',reading:'Pode haver perda de oportunidades.',nature:'hipotese',...base}],
+  source_coverage:envelope.allowed_sources.map(source_id=>({source_id,use:'context_only',reading:'Fonte considerada no diagnóstico.'})),
+  source_observations:[],
   action_signals:['followup_baixo'],
   priorities:[{title:'Organizar follow-up',why:'Há acompanhamento irregular.',pillar:'Operação',ps:['Processos','Performance'],impact:'alto',confidence:'medio',urgency:'alto',effort:'baixo',action_signal:'followup_baixo',sources:['Q11','Q11C']}],
   not_assertable:['Não há benchmark validado.'],
