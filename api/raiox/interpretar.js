@@ -18,7 +18,7 @@ import {
   deleteOpenAIFile,
 } from '../../lib/raiox-v2-openai.js';
 import { syncRaioxV22ToCrm } from '../../lib/raiox-crm-sync.js';
-import { buildDeclaredIntake, VOS_DECLARED_METRICS } from '../../lib/vos-intelligence-intake-v1.js';
+import { buildDeclaredIntake, buildDeclaredMetricPeriod, VOS_DECLARED_METRICS } from '../../lib/vos-intelligence-intake-v1.js';
 import { generateVosIntelligenceReport, VOS_REPORT_MODEL, VOS_REPORT_VERSION } from '../../lib/vos-intelligence-report-v1.js';
 import { temVosAiRuntime } from '../../lib/vos-intelligence-diagnostic-v1.js';
 
@@ -85,6 +85,10 @@ function sanitizeDraft(d, session) {
   const uploaded = new Map((session?.raioxV2Uploads || []).map(x => [x.file_id, x]));
   const images = (Array.isArray(d?.images) ? d.images : []).slice(0, 6).map(x => ({
     file_id: clean(x?.file_id, 120), name: clean(x?.name, 160), context: clean(x?.context, 1200),
+    channel: clean(x?.channel, 50),
+    visible_content_count: x?.visible_content_count === null || x?.visible_content_count === undefined || x?.visible_content_count === ''
+      ? null
+      : Math.max(0, Math.min(999, Number(x.visible_content_count) || 0)),
   })).filter(x => x.file_id && uploaded.has(x.file_id));
   const company = {
     segment: clean(d?.company?.segment, 220),
@@ -123,10 +127,16 @@ function sanitizeIntake(raw, allowedFileIds) {
   const images = (Array.isArray(raw?.images) ? raw.images : []).slice(0, 6).map((im, i) => ({
     id: `IMG${String(i + 1).padStart(2, '0')}`,
     name: clean(im?.name, 160), context: clean(im?.context, 1200), file_id: clean(im?.file_id, 120),
+    channel: clean(im?.channel, 50),
+    visible_content_count: im?.visible_content_count === null || im?.visible_content_count === undefined || im?.visible_content_count === ''
+      ? null
+      : Math.max(0, Math.min(999, Number(im.visible_content_count) || 0)),
   })).filter(x => x.file_id && allowedFileIds.has(x.file_id));
+  const metricPeriod = clean(raw?.metrics?.metric_period, 60)
+    || buildDeclaredMetricPeriod(raw?.metric_start, raw?.metric_end);
   const declared = buildDeclaredIntake({
     company: raw?.company,
-    metrics: raw?.metrics,
+    metrics: { ...(raw?.metrics || {}), metric_period: metricPeriod },
     metric_unknown: raw?.metric_unknown,
   });
   return {
@@ -293,7 +303,7 @@ async function handleGenerateV2(req, res, body) {
         answers: intake.answers,
         complements: intake.complements,
         links: intake.links,
-        images: intake.images.map(x => ({ id: x.id, name: x.name, context: x.context, file_id: x.file_id })),
+        images: intake.images.map(x => ({ id: x.id, name: x.name, context: x.context, channel: x.channel, visible_content_count: x.visible_content_count, file_id: x.file_id })),
       },
     });
 
