@@ -18,7 +18,7 @@ import {
   deleteOpenAIFile,
 } from '../../lib/raiox-v2-openai.js';
 import { syncRaioxV22ToCrm } from '../../lib/raiox-crm-sync.js';
-import { buildDeclaredIntake, VOS_DECLARED_METRICS } from '../../lib/vos-intelligence-intake-v1.js';
+import { buildDeclaredIntake, buildDeclaredMetricPeriod, VOS_DECLARED_METRICS } from '../../lib/vos-intelligence-intake-v1.js';
 import { generateVosIntelligenceReport, VOS_REPORT_MODEL, VOS_REPORT_VERSION } from '../../lib/vos-intelligence-report-v1.js';
 import { temVosAiRuntime } from '../../lib/vos-intelligence-diagnostic-v1.js';
 
@@ -124,9 +124,11 @@ function sanitizeIntake(raw, allowedFileIds) {
     id: `IMG${String(i + 1).padStart(2, '0')}`,
     name: clean(im?.name, 160), context: clean(im?.context, 1200), file_id: clean(im?.file_id, 120),
   })).filter(x => x.file_id && allowedFileIds.has(x.file_id));
+  const metricPeriod = clean(raw?.metrics?.metric_period, 60)
+    || buildDeclaredMetricPeriod(raw?.metric_start, raw?.metric_end);
   const declared = buildDeclaredIntake({
     company: raw?.company,
-    metrics: raw?.metrics,
+    metrics: { ...(raw?.metrics || {}), metric_period: metricPeriod },
     metric_unknown: raw?.metric_unknown,
   });
   return {
