@@ -29,6 +29,8 @@ const request=buildDiagnosticRequest(envelope);
 assert.equal(request.text.format.type,'json_schema');
 assert.equal(request.text.format.strict,true);
 assert.equal(request.store,false);
+const visualRequest=buildDiagnosticRequest(envelope,{images:[{id:'IMG01',file_id:'file_test',context:'Print da oferta'}]});
+assert.equal(visualRequest.input[0].content.some(item=>item.type==='input_image'&&item.file_id==='file_test'),true);
 
 const base={status:'validar',reading:'Ainda precisa de evidência.',confidence:'a_validar',sources:['Q11']};
 const report={
@@ -37,6 +39,8 @@ const report={
   pillars:['Aquisição','Posicionamento','Operação'].map(name=>({name,...base})),
   ps:['Produto','Preço','Praça','Promoção','Pessoas','Processos','Posicionamento','Performance'].map(name=>({name,...base})),
   root_hypotheses:[{title:'Follow-up irregular',reading:'Pode haver perda de oportunidades.',nature:'hipotese',...base}],
+  action_signals:['followup_baixo'],
+  priorities:[{title:'Organizar follow-up',why:'Há acompanhamento irregular.',pillar:'Operação',ps:['Processos','Performance'],impact:'alto',confidence:'medio',urgency:'alto',effort:'baixo',action_signal:'followup_baixo',sources:['Q11','Q11C']}],
   not_assertable:['Não há benchmark validado.'],
 };
 assert.equal(validateDiagnosticReport(report,envelope).valid,true);

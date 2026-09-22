@@ -18,12 +18,9 @@ import {
   uploadImageToOpenAI,
   deleteOpenAIFile,
 } from '../../lib/raiox-v2-openai.js';
-import {
-  gerarRaioxV22,
-  REPORT_VERSION_V22,
-  OPENAI_MODEL_V22,
-} from '../../lib/raiox-v2-report-v22.js';
 import { syncRaioxV22ToCrm } from '../../lib/raiox-crm-sync.js';
+import { buildDeclaredIntake, VOS_DECLARED_METRICS } from '../../lib/vos-intelligence-intake-v1.js';
+import { generateVosIntelligenceReport, VOS_REPORT_MODEL, VOS_REPORT_VERSION } from '../../lib/vos-intelligence-report-v1.js';
 
 export const maxDuration = 60;
 
@@ -89,11 +86,25 @@ function sanitizeDraft(d, session) {
   const images = (Array.isArray(d?.images) ? d.images : []).slice(0, 6).map(x => ({
     file_id: clean(x?.file_id, 120), name: clean(x?.name, 160), context: clean(x?.context, 1200),
   })).filter(x => x.file_id && uploaded.has(x.file_id));
+  const company = {
+    segment: clean(d?.company?.segment, 220),
+    business_model: clean(d?.company?.business_model, 80),
+    region: clean(d?.company?.region, 220),
+  };
+  const metrics = {};
+  const metric_unknown = {};
+  for (const field of VOS_DECLARED_METRICS) {
+    const value = d?.metrics?.[field];
+    if (value !== undefined && value !== null && String(value).trim() !== '') metrics[field] = clean(value, 60);
+    metric_unknown[field] = d?.metric_unknown?.[field] === true;
+  }
   return {
     business_name: clean(d?.business_name, 220),
-    answers, complements, links, images,
+    company, answers, complements, links, images, metrics, metric_unknown,
+    metric_start: clean(d?.metric_start, 10),
+    metric_end: clean(d?.metric_end, 10),
     q06main: clean(d?.q06main, 500),
-    section: Number.isInteger(d?.section) ? Math.max(0, Math.min(6, d.section)) : 0,
+    section: Number.isInteger(d?.section) ? Math.max(0, Math.min(7, d.section)) : 0,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -113,7 +124,19 @@ function sanitizeIntake(raw, allowedFileIds) {
     id: `IMG${String(i + 1).padStart(2, '0')}`,
     name: clean(im?.name, 160), context: clean(im?.context, 1200), file_id: clean(im?.file_id, 120),
   })).filter(x => x.file_id && allowedFileIds.has(x.file_id));
-  return { business_name: clean(raw?.business_name, 220), answers, complements, links, images };
+  const declared = buildDeclaredIntake({
+    company: raw?.company,
+    metrics: raw?.metrics,
+    metric_unknown: raw?.metric_unknown,
+  });
+  return {
+    business_name: clean(raw?.business_name, 220),
+    company: declared.company,
+    metrics: declared.metrics,
+    metric_unknown: declared.metric_unknown,
+    declared_validation: declared.validation,
+    answers, complements, links, images,
+  };
 }
 
 function decodeDataUrl(v) {
@@ -127,7 +150,7 @@ function decodeDataUrl(v) {
 async function handleV2Get(req, res, action) {
   if (action === 'status') {
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json({ ok: true, openai_configured: temOpenAI, model: OPENAI_MODEL_V22 || OPENAI_MODEL, report_version: REPORT_VERSION_V22 });
+    return res.status(200).json({ ok: true, openai_configured: temOpenAI, model: VOS_REPORT_MODEL || OPENAI_MODEL, report_version: VOS_REPORT_VERSION });
   }
   if (action !== 'draft' && action !== 'draft_proxy') return res.status(400).json({ ok: false, error: 'Ação inválida.' });
   const ref = clean(req.query?.ref, 220);
@@ -186,7 +209,7 @@ async function handleUpload(req, res, body) {
 
 async function handleGenerateV2(req, res, body) {
   if (!temRedis) return res.status(503).json({ ok: false, error: 'Sessão indisponível no momento.' });
-  if (!temOpenAI) return res.status(503).json({ ok: false, error: 'OpenAI ainda não configurada no backend.', code: 'OPENAI_NOT_CONFIGURED', model: OPENAI_MODEL_V22 || OPENAI_MODEL });
+  if (!temOpenAI) return res.status(503).json({ ok: false, error: 'OpenAI ainda não configurada no backend.', code: 'OPENAI_NOT_CONFIGURED', model: VOS_REPORT_MODEL || OPENAI_MODEL });
   const rateOk = await limitarTaxa(store, `raiox-v2:${ipOf(req)}`, 5);
   if (!rateOk) return res.status(429).json({ ok: false, error: 'Muitas tentativas. Aguarde um minuto.' });
   const ref = clean(body.ref, 220);
@@ -196,7 +219,7 @@ async function handleGenerateV2(req, res, body) {
   // UM PAGAMENTO = UMA GERAÇÃO DE IA.
   if (session.raioxV2Report) {
     // Reabrir o relatório nunca chama a OpenAI. Se o CRM falhou antes, apenas o sync idempotente é tentado novamente.
-    if (session.raioxV2CrmSyncStatus !== 'success') {
+    if (session.raioxV2Report?.report_version !== VOS_REPORT_VERSION && session.raioxV2CrmSyncStatus !== 'success') {
       try {
         const crm = await syncRaioxV22ToCrm({
           ref,
@@ -227,6 +250,14 @@ async function handleGenerateV2(req, res, body) {
   const missing = REQUIRED_V2.filter(id => !intake.answers[id]);
   if (!intake.business_name) missing.unshift('BUSINESS_NAME');
   if (missing.length) return res.status(400).json({ ok: false, error: 'Existem respostas obrigatórias pendentes.', missing });
+  if (!intake.declared_validation.valid) {
+    return res.status(400).json({
+      ok: false,
+      error: 'Revise o contexto e os números informados. Cada número deve ter um valor válido ou estar marcado como “não sei”.',
+      code: 'DECLARED_INTAKE_INVALID',
+      fields: intake.declared_validation.errors,
+    });
+  }
 
   try {
     await store.atualizar(ref, {
@@ -234,6 +265,9 @@ async function handleGenerateV2(req, res, body) {
       raioxV2StartedAt: new Date().toISOString(),
       raioxV2Intake: {
         business_name: intake.business_name,
+        company: intake.company,
+        metrics: intake.metrics,
+        metric_unknown: intake.metric_unknown,
         answers: intake.answers,
         complements: intake.complements,
         links: intake.links,
@@ -241,38 +275,25 @@ async function handleGenerateV2(req, res, body) {
       },
     });
 
-    const result = await gerarRaioxV22(intake);
+    // VOS 1.0 usa exclusivamente o que o cliente declarou nesta execução.
+    // Nenhuma leitura de CRM, Reportei ou outra base histórica ocorre neste caminho.
+    const result = await generateVosIntelligenceReport(intake);
     await store.atualizar(ref, {
       raioxV2Status: 'completed',
       raioxV2CompletedAt: new Date().toISOString(),
-      raioxV2ReportVersion: REPORT_VERSION_V22,
-      raioxV2Model: OPENAI_MODEL_V22,
+      raioxV2ReportVersion: VOS_REPORT_VERSION,
+      raioxV2Model: VOS_REPORT_MODEL,
       raioxV2Cost: result.cost,
       raioxV2Report: result.report,
       raioxV2LockedAt: new Date().toISOString(),
-      raioxV2LinkAudit: result.linkAudit.map(x => ({ id: x.id, url: x.url, status: x.status, reason: x.reason })),
+      raioxV2CrmSyncStatus: 'not_applicable_vie_validation',
+      raioxV2Audit: result.audit,
     });
 
     await Promise.all(intake.images.map(x => deleteOpenAIFile(x.file_id)));
     if (intake.images.length) await store.atualizar(ref, { raioxV2Uploads: [], raioxV2FilesDeletedAt: new Date().toISOString() });
 
-    // CRM é pós-entrega e idempotente. Uma falha de CRM não bloqueia o relatório do cliente.
-    try {
-      const crm = await syncRaioxV22ToCrm({ ref, intake, report: result.report, session, completedAt: new Date().toISOString() });
-      await store.atualizar(ref, {
-        raioxV2CrmSyncStatus: 'success',
-        raioxV2CrmSyncAt: new Date().toISOString(),
-        raioxV2CrmIds: { intake_id: crm.intake_id, contact_id: crm.contact_id, opportunity_id: crm.opportunity_id },
-        raioxV2CrmSyncError: null,
-      });
-      log('info', 'Raio-X V2.2 conectado ao CRM.', { ref, intake_id: crm.intake_id, contact_id: crm.contact_id, opportunity_id: crm.opportunity_id });
-    } catch (e) {
-      const crmMsg = clean(e?.message || 'Falha no sync CRM.', 300);
-      await store.atualizar(ref, { raioxV2CrmSyncStatus: 'error', raioxV2CrmSyncError: crmMsg, raioxV2CrmSyncErrorAt: new Date().toISOString() }).catch(() => {});
-      log('warn', 'Raio-X V2.2 entregue, mas sync com CRM falhou.', { ref, motivo: crmMsg });
-    }
-
-    log('info', 'Raio-X V2.2 concluído e sessão bloqueada para nova geração', { ref, model: OPENAI_MODEL_V22, cost_usd: result.cost?.estimated_total_usd, links: intake.links.length, images: intake.images.length });
+    log('info', 'VOS Intelligence 1.0 concluído sem leitura histórica e sem sync de CRM', { ref, model: VOS_REPORT_MODEL, cost_usd: result.cost?.estimated_total_usd, links: intake.links.length, images: intake.images.length });
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ ok: true, report: result.report, usage: result.cost, reused: false });
   } catch (e) {

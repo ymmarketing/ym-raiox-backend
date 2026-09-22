@@ -72,7 +72,7 @@ CRM -> % leads registrados -> % follow-up -> conversão -> receita incremental.
 ## Previsão e targets
 Targets nunca são promessas. São faixas condicionadas a:
 - baseline real;
-- histórico da própria empresa;
+- baseline declarado pelo cliente no período desta execução;
 - benchmark comparável e datado;
 - ações efetivamente implantadas;
 - capacidade operacional;
@@ -118,18 +118,31 @@ O Data Quality Gate agora reprova números inválidos, percentuais fora da faixa
 
 Cada execução da camada interpretativa retorna auditoria mínima com versão do motor, versão do contrato, modelo, tokens, duração, status e identificador da resposta. Custo será conectado ao registro persistente na etapa de auditoria de IA, sem alterar produção nesta branch.
 
+## Benchmark e Target Engine
+O contrato `VOS_BENCHMARK_1.0` exige faixa, unidade, segmento, modelo B2B/B2C, região, canal e fonte com data. A seleção calcula comparabilidade e confiabilidade separadamente; referência com baixa comparabilidade ou baixa confiabilidade não libera target.
+
+O contrato `VOS_TARGET_1.0` só gera trajetória 30/60/90 quando existem baseline, Data Quality A/B, benchmark selecionado e estimativa de impacto com fonte e fundamento. A saída registra confiança, premissas e trava de capacidade. Classe C continua bloqueada em “instrumentar antes de prever”.
+
+## Execução percebida
+O contrato `VOS_PLAYBOOK_1.0` transforma as ações selecionadas em passo a passo, horários, responsável, exemplo, entrega, KPI líder, KPI intermediário, KPI de negócio, target ou bloqueio explícito, janela de maturação e regra de revisão.
+
+A rotina é separada em Hoje, Esta semana, Este mês e revisões de 30/60/90 dias. O Content Engine inicial só libera uma semana completa quando recebe oferta, público, problema, prova e objeção; cada peça traz tema, formato, título, capa, estrutura, legenda, CTA e KPI.
+
+
 ## Homologação YM
 A YM será tratada como cliente real, mas sem cobrança Asaas na execução interna. O caminho de pagamento real continuará preservado e será testado separadamente antes do gate de produção.
 
-Dados de referência já conhecidos para o caso YM:
-- negócio: YM Marketing & Negócios;
-- entrada comercial: Raio-X Estratégico;
-- meta prioritária: aquisição previsível e vendas recorrentes;
-- capacidade ainda disponível;
-- canais e ativos já estruturados;
-- necessidade de consolidar aquisição, pipeline e previsibilidade.
+A homologação começa do zero. A YM preencherá o mesmo questionário de um cliente real e somente esses insumos poderão influenciar o diagnóstico:
+- contexto do negócio declarado no formulário;
+- respostas Q01–Q18;
+- números de um único período informado pelo cliente;
+- links e materiais enviados deliberadamente na execução.
 
-A homologação não pode depender apenas de respostas declaradas. Deve usar dados/evidências disponíveis e marcar como lacuna o que não estiver medido.
+O motor não consulta CRM, Reportei, Supabase ou qualquer outra base histórica para preencher, corrigir ou influenciar o diagnóstico. Cada número precisa ser informado ou marcado explicitamente como “não sei”. Zero continua sendo um valor válido; “não sei” permanece `null`.
+
+Na validação, o relatório é salvo na sessão do acesso, sem sincronização automática com CRM. A persistência operacional definitiva será tratada somente depois do gate de homologação.
+
+O contrato `VOS_DECLARED_INTAKE_1.0` valida essa coleta. O relatório `VOS_REPORT_1.0` reúne Data Quality, KPIs calculados, 3 Pilares, 8 Ps, prioridades ordenadas, plano executável, rotina e revisões 30/60/90. Quando faltam baseline, benchmark comparável ou fonte de impacto, a meta fica bloqueada em vez de ser inventada.
 
 ## Cronograma executivo
 ### Sprint 1 — Fundação
