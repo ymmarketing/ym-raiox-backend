@@ -84,6 +84,21 @@ assert.equal(gatewayUrl,'https://ai-gateway.vercel.sh/v1/responses');
 assert.equal(gatewayBody.model,'openai/gpt-5.6-terra');
 assert.equal(gatewayExecution.audit.provider,'vercel_ai_gateway');
 
+const fallbackCalls=[];
+const fallbackExecution=await runDiagnosticAnalysis({
+  envelope,api_key:'openai-test',gateway_key:'gateway-test',model:'gpt-5.6-terra',
+  fetch_impl:async(url,options)=>{
+    fallbackCalls.push({url,body:JSON.parse(options.body)});
+    if(fallbackCalls.length===1) return {ok:false,status:403,text:async()=>'{"error":"free tier model"}'};
+    return {ok:true,status:200,text:async()=>JSON.stringify({id:'resp_fallback',status:'completed',output_text:JSON.stringify(report),usage:{input_tokens:100,output_tokens:50,input_tokens_details:{cached_tokens:0}}})};
+  },
+});
+assert.equal(fallbackCalls[0].url,'https://ai-gateway.vercel.sh/v1/responses');
+assert.equal(fallbackCalls[1].url,'https://api.openai.com/v1/responses');
+assert.equal(fallbackCalls[1].body.model,'gpt-5.6-terra');
+assert.equal(fallbackExecution.audit.provider,'openai_direct');
+assert.equal(fallbackExecution.audit.gateway_fallback_status,403);
+
 const linkedEnvelope=buildDiagnosticEnvelope({
   questionnaire_version:'RX_CANONICO_2.0',business_name:'YM',company,metrics,
   answers:{Q01:'Consultoria estratégica',Q02:'Raio-X',Q03:'R$ 97',Q06:['Indicação','Instagram'],Q11:'Às vezes lembro e chamo',Q18:'Vendas recorrentes'},
