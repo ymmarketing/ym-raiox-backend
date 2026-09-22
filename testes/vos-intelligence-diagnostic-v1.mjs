@@ -33,6 +33,10 @@ assert.equal(request.text.format.strict,true);
 assert.equal(request.store,false);
 const visualRequest=buildDiagnosticRequest(envelope,{images:[{id:'IMG01',file_id:'file_test',context:'Print da oferta'}]});
 assert.equal(visualRequest.input[0].content.some(item=>item.type==='input_image'&&item.file_id==='file_test'),true);
+const gatewayVisualRequest=buildDiagnosticRequest(envelope,{images:[{id:'IMG01',image_url:'data:image/jpeg;base64,ZmFrZQ==',context:'Print da oferta'}]});
+assert.equal(gatewayVisualRequest.input[0].content.some(item=>item.type==='input_image'&&item.image_url==='data:image/jpeg;base64,ZmFrZQ=='),true);
+const linkedRequest=buildDiagnosticRequest({...envelope,external_sources:[{id:'LINK01',type:'client_link',status:'parcial',url:'https://example.com',context:'Página'}]});
+assert.equal(linkedRequest.tools.some(tool=>tool.type==='web_search'),true);
 
 const base={status:'validar',reading:'Ainda precisa de evidência.',confidence:'a_validar',sources:['Q11']};
 const report={
@@ -67,6 +71,34 @@ const execution=await runDiagnosticAnalysis({
 assert.equal(execution.audit.response_id,'resp_test');
 assert.equal(execution.audit.input_tokens,1200);
 assert.equal(execution.diagnostic.main_bottleneck.pillar,'Operação');
+
+let gatewayUrl='',gatewayBody=null;
+const gatewayExecution=await runDiagnosticAnalysis({
+  envelope,api_key:'',gateway_key:'gateway-test',model:'gpt-5.6-terra',
+  fetch_impl:async(url,options)=>{
+    gatewayUrl=url;gatewayBody=JSON.parse(options.body);
+    return {ok:true,status:200,text:async()=>JSON.stringify({id:'resp_gateway',status:'completed',output_text:JSON.stringify(report),usage:{input_tokens:100,output_tokens:50,input_tokens_details:{cached_tokens:0}}})};
+  },
+});
+assert.equal(gatewayUrl,'https://ai-gateway.vercel.sh/v1/responses');
+assert.equal(gatewayBody.model,'openai/gpt-5.6-terra');
+assert.equal(gatewayExecution.audit.provider,'vercel_ai_gateway');
+
+const linkedEnvelope=buildDiagnosticEnvelope({
+  questionnaire_version:'RX_CANONICO_2.0',business_name:'YM',company,metrics,
+  answers:{Q01:'Consultoria estratégica',Q02:'Raio-X',Q03:'R$ 97',Q06:['Indicação','Instagram'],Q11:'Às vezes lembro e chamo',Q18:'Vendas recorrentes'},
+  complements:{Q11:'Não existe cadência documentada.'},
+  external_sources:[{id:'LINK01',type:'client_link',status:'inacessivel',url:'https://example.com',context:'Perfil informado',content:''}],
+});
+const linkedReport=structuredClone(report);
+linkedReport.source_coverage=linkedEnvelope.allowed_sources.map(source_id=>({source_id,use:'context_only',reading:'Fonte considerada no diagnóstico.'}));
+linkedReport.source_observations=[{source_id:'LINK01',access_status:'analisado',evidence_basis:'web_search',observation:'Perfil claro.',implication:'Ajuda a oferta.',recommended_change:'Manter.',confidence:'a_validar'}];
+const guardedExecution=await runDiagnosticAnalysis({
+  envelope:linkedEnvelope,api_key:'test-key',
+  fetch_impl:async()=>({ok:true,status:200,text:async()=>JSON.stringify({id:'resp_guard',status:'completed',output_text:JSON.stringify(linkedReport),usage:{input_tokens:100,output_tokens:50,input_tokens_details:{cached_tokens:0}}})}),
+});
+assert.equal(guardedExecution.diagnostic.source_observations[0].access_status,'inacessivel');
+assert.equal(guardedExecution.diagnostic.source_observations[0].evidence_basis,'declared_context');
 
 await assert.rejects(()=>runDiagnosticAnalysis({
   envelope,api_key:'test-key',

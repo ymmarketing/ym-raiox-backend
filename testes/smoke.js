@@ -55,6 +55,8 @@ function execRedis(args) {
     }
     case 'GET':
       return redis.has(chave) ? redis.get(chave) : null;
+    case 'DEL':
+      return redis.delete(chave) ? 1 : 0;
     case 'INCR': {
       const n = (Number(redis.get(chave)) || 0) + 1;
       redis.set(chave, String(n));
