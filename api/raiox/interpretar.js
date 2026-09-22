@@ -214,9 +214,16 @@ async function handleUpload(req, res, body) {
     const name = `${base}.${ext}`;
     const uploaded = await uploadImageToOpenAI({ buffer, mime, name });
     const item = { file_id: uploaded.file_id, name, context: clean(body.context, 1200), bytes: uploaded.bytes, uploadedAt: new Date().toISOString() };
-    await store.atualizar(ref, { raioxV2Uploads: [...uploads, item] });
-    log('info', 'Print vinculado ao Raio-X V2', { ref, file_id: item.file_id, bytes: item.bytes });
-    return res.status(200).json({ ok: true, file: item });
+    const latest = await approvedSession(ref);
+    const currentUploads = Array.isArray(latest?.raioxV2Uploads) ? latest.raioxV2Uploads : [];
+    if (currentUploads.length >= 6) {
+      await deleteOpenAIFile(item.file_id).catch(() => {});
+      return res.status(400).json({ ok: false, error: 'O limite atual é de 6 prints por Raio-X.' });
+    }
+    const saved = await store.atualizar(ref, { raioxV2Uploads: [...currentUploads, item] });
+    const savedUploads = Array.isArray(saved.raioxV2Uploads) ? saved.raioxV2Uploads : [];
+    log('info', 'Print vinculado ao Raio-X V2', { ref, file_id: item.file_id, bytes: item.bytes, uploads: savedUploads.length });
+    return res.status(200).json({ ok: true, file: item, uploads: savedUploads });
   } catch (e) {
     return res.status(400).json({ ok: false, error: clean(e?.message || 'Falha no upload.', 300) });
   }

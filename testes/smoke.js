@@ -62,6 +62,24 @@ function execRedis(args) {
     }
     case 'EXPIRE':
       return 1;
+    case 'EVAL': {
+      const key = args[3];
+      const patch = JSON.parse(args[4] || '{}');
+      let atual = {};
+      try { atual = JSON.parse(redis.get(key) || '{}'); } catch { atual = {}; }
+      const updatedAt = args[6];
+      const novo = {
+        ...atual,
+        ...patch,
+        ref: args[5],
+        updatedAt,
+        createdAt: atual.createdAt || updatedAt,
+        status: patch.status || atual.status || 'pending',
+      };
+      const encoded = JSON.stringify(novo);
+      redis.set(key, encoded);
+      return encoded;
+    }
     default:
       return null;
   }
