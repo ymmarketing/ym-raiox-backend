@@ -27,7 +27,7 @@ export const maxDuration = 300;
 const EXIGE_PAGAMENTO = String(process.env.REQUER_PAGAMENTO_RELATORIO ?? 'true').toLowerCase() !== 'false';
 const VOS_LIVE_AI_ENABLED = String(process.env.VOS_LIVE_AI_ENABLED || '').toLowerCase() === 'true';
 const VOS_PREVIEW_TOKEN_SALT = 'YM-VOS-PREVIEW-PAID-2026-09';
-const VOS_PREVIEW_TOKEN_HASH = String(process.env.VOS_PREVIEW_TEST_TOKEN_HASH || '47f77d8e434a5db6cbd87a91756a9b47d002670c71a050ffc8e68deb9062aa83').trim().toLowerCase();
+const VOS_PREVIEW_TOKEN_HASH = String(process.env.VOS_PREVIEW_TEST_TOKEN_HASH || 'b2e18db7356c75869445f0fb0760fa56b6ba1e8a5a2475e84d955d013c54cacb').trim().toLowerCase();
 const REQUIRED_V2 = Array.from({ length: 18 }, (_, i) => `Q${String(i + 1).padStart(2, '0')}`);
 const MULTI_V2 = new Set(['Q06', 'Q10', 'Q13']);
 
