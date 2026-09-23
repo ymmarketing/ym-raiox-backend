@@ -15,7 +15,6 @@ await store.salvarImagem(ref,imageId,'data:image/jpeg;base64,ZmFrZQ==');
 assert.equal(await store.buscarImagem(ref,imageId),'data:image/jpeg;base64,ZmFrZQ==');
 await store.removerImagem(ref,imageId);
 assert.equal(await store.buscarImagem(ref,imageId),null);
-
 const lockRef=`generation_lock_${Date.now()}`;
 const owners=Array.from({length:20},(_,i)=>`owner_${i}`);
 const acquisitions=await Promise.all(owners.map(owner=>store.adquirirTravaGeracao(lockRef,owner,60)));
