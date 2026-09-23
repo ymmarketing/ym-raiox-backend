@@ -14,6 +14,8 @@ process.env.ASAAS_API_KEY = '$aact_hmlg_FAKE_PARA_TESTE';
 process.env.ASAAS_WEBHOOK_TOKEN = TOKEN_WEBHOOK;
 process.env.ASAAS_ENV = 'sandbox';
 process.env.ANTHROPIC_API_KEY = 'sk-ant-FAKE_PARA_TESTE';
+process.env.OPENAI_API_KEY = 'sk-FAKE_VOS_PARA_TESTE';
+process.env.VOS_LIVE_AI_ENABLED = 'true';
 process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
 process.env.PRODUCT_PRICE = '97';
@@ -55,6 +57,8 @@ function execRedis(args) {
     }
     case 'GET':
       return redis.has(chave) ? redis.get(chave) : null;
+    case 'DEL':
+      return redis.delete(chave) ? 1 : 0;
     case 'INCR': {
       const n = (Number(redis.get(chave)) || 0) + 1;
       redis.set(chave, String(n));
@@ -62,6 +66,24 @@ function execRedis(args) {
     }
     case 'EXPIRE':
       return 1;
+    case 'EVAL': {
+      const key = args[3];
+      const patch = JSON.parse(args[4] || '{}');
+      let atual = {};
+      try { atual = JSON.parse(redis.get(key) || '{}'); } catch { atual = {}; }
+      const updatedAt = args[6];
+      const novo = {
+        ...atual,
+        ...patch,
+        ref: args[5],
+        updatedAt,
+        createdAt: atual.createdAt || updatedAt,
+        status: patch.status || atual.status || 'pending',
+      };
+      const encoded = JSON.stringify(novo);
+      redis.set(key, encoded);
+      return encoded;
+    }
     default:
       return null;
   }
@@ -177,6 +199,7 @@ const status = (await import('../api/pagamento/status.js')).default;
 const webhook = (await import('../api/asaas/webhook.js')).default;
 const relatorio = (await import('../api/relatorio.js')).default;
 const manual = (await import('../api/acesso/manual.js')).default;
+const { statusMestreExecucao } = await import('../lib/execution-master.js');
 
 /* ═══════════ diagnóstico de exemplo (formato do Motor) ═══════════ */
 const DIAG = {
@@ -207,6 +230,8 @@ await teste('health responde e reporta configuração', async () => {
   assert.equal(res._status, 200);
   assert.equal(res._json.ok, true);
   assert.equal(res._json.pronto, true, 'deveria estar pronto com tudo configurado');
+  assert.equal(res._json.prontoVos, true, 'VOS deveria estar pronto com runtime, Redis e kill switch');
+  assert.equal(res._json.config.vosReportVersion, 'VOS_REPORT_1.0');
 });
 await teste('health não vaza o valor das chaves', async () => {
   const res = criarRes();
@@ -214,7 +239,18 @@ await teste('health não vaza o valor das chaves', async () => {
   const txt = JSON.stringify(res._json);
   assert.ok(!txt.includes(process.env.ASAAS_API_KEY), 'vazou ASAAS_API_KEY');
   assert.ok(!txt.includes(process.env.ANTHROPIC_API_KEY), 'vazou ANTHROPIC_API_KEY');
+  assert.ok(!txt.includes(process.env.OPENAI_API_KEY), 'vazou OPENAI_API_KEY');
   assert.ok(!txt.includes(TOKEN_WEBHOOK), 'vazou webhook token');
+});
+await teste('mestre temporário fica bloqueado em produção por padrão', async () => {
+  const originalEnv = process.env.ASAAS_ENV;
+  const originalAllow = process.env.CODIGO_EXECUCAO_MESTRE_ALLOW_PRODUCTION;
+  process.env.ASAAS_ENV = 'production';
+  delete process.env.CODIGO_EXECUCAO_MESTRE_ALLOW_PRODUCTION;
+  assert.equal(statusMestreExecucao().ativo, false);
+  process.env.ASAAS_ENV = originalEnv;
+  if (originalAllow === undefined) delete process.env.CODIGO_EXECUCAO_MESTRE_ALLOW_PRODUCTION;
+  else process.env.CODIGO_EXECUCAO_MESTRE_ALLOW_PRODUCTION = originalAllow;
 });
 
 console.log('\n═══ CRIAR PAGAMENTO ═══');
@@ -573,12 +609,16 @@ await teste('TRAVA: mestre é recusado em ASAAS_ENV=production', async () => {
   process.env.ASAAS_ENV = salvo;
   assert.equal(res._status, 403, 'mestre passou em produção!');
 });
-await teste('mestre temporário de execução funciona em produção', async () => {
+await teste('mestre temporário só funciona em produção com autorização explícita', async () => {
   const salvo = process.env.ASAAS_ENV;
+  const salvoAllow = process.env.CODIGO_EXECUCAO_MESTRE_ALLOW_PRODUCTION;
   process.env.ASAAS_ENV = 'production';
+  process.env.CODIGO_EXECUCAO_MESTRE_ALLOW_PRODUCTION = 'true';
   const res = criarRes();
   await manual(criarReq('POST', { body: { codigo: CODIGO_EXECUCAO_TESTE } }), res);
   process.env.ASAAS_ENV = salvo;
+  if (salvoAllow === undefined) delete process.env.CODIGO_EXECUCAO_MESTRE_ALLOW_PRODUCTION;
+  else process.env.CODIGO_EXECUCAO_MESTRE_ALLOW_PRODUCTION = salvoAllow;
   assert.equal(res._status, 200, JSON.stringify(res._json));
   assert.equal(res._json.tipo, 'mestre_execucao');
   assert.match(res._json.ref, /_mestreexec[a-f0-9]+$/);

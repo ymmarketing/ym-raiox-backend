@@ -9,6 +9,8 @@ import { store, temRedis } from '../lib/store.js';
 import { temChaveAsaas, BASE_URL } from '../lib/asaas.js';
 import { temChaveAnthropic } from '../lib/anthropic.js';
 import { statusMestreExecucao } from '../lib/execution-master.js';
+import { temVosAiRuntime } from '../lib/vos-intelligence-diagnostic-v1.js';
+import { VOS_REPORT_MODEL, VOS_REPORT_VERSION } from '../lib/vos-intelligence-report-v1.js';
 
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return;
@@ -22,12 +24,22 @@ export default async function handler(req, res) {
   }
 
   const mestreExecucao = statusMestreExecucao();
+  const vosLiveAiEnabled = String(process.env.VOS_LIVE_AI_ENABLED || '').toLowerCase() === 'true';
+  const vosPreviewMode = process.env.VERCEL_ENV === 'preview';
   const config = {
     asaas: temChaveAsaas,
     asaasAmbiente: process.env.ASAAS_ENV || 'production',
     asaasBaseUrl: BASE_URL,
     asaasWebhookToken: Boolean(process.env.ASAAS_WEBHOOK_TOKEN),
     anthropic: temChaveAnthropic,
+    vosIntelligence: temVosAiRuntime,
+    vosLiveAiEnabled,
+    vosPreviewOneTimeEnabled: vosPreviewMode,
+    vosProvider: process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_ENV ? 'vercel_ai_gateway' : 'openai_direct',
+    vosModel: VOS_REPORT_MODEL,
+    vosReportVersion: VOS_REPORT_VERSION,
+    vosTimeoutMs: Number(process.env.OPENAI_VOS_TIMEOUT_MS || 240000),
+    vosMaxOutputTokens: Number(process.env.OPENAI_VOS_MAX_OUTPUT_TOKENS || 7000),
     redis: temRedis,
     redisConectado: redis.ok,
     preco: process.env.PRODUCT_PRICE || '97',
@@ -42,6 +54,7 @@ export default async function handler(req, res) {
       (process.env.ASAAS_ENV || 'production').toLowerCase() !== 'production',
     codigoMestreExecucaoAtivo: mestreExecucao.ativo,
     codigoMestreExecucaoExpiraEm: mestreExecucao.expiraEm,
+    codigoMestreExecucaoPermitidoEmProducao: mestreExecucao.permitidoEmProducao,
   };
 
   const faltando = [];
@@ -50,6 +63,11 @@ export default async function handler(req, res) {
   if (!config.anthropic) faltando.push('ANTHROPIC_API_KEY');
   if (!config.redis) faltando.push('UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN');
   if (!config.siteUrl) faltando.push('SITE_URL (o cliente não volta automaticamente após pagar)');
+
+  const faltandoVos = [];
+  if (!config.redis) faltandoVos.push('UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN');
+  if (!config.vosIntelligence) faltandoVos.push('AI_GATEWAY/OIDC ou OPENAI_API_KEY');
+  if (!vosLiveAiEnabled && !vosPreviewMode) faltandoVos.push('VOS_LIVE_AI_ENABLED=true');
 
   const alertas = [];
   if (process.env.CODIGO_MESTRE && (process.env.ASAAS_ENV || '').toLowerCase() === 'production') {
@@ -65,14 +83,17 @@ export default async function handler(req, res) {
   }
 
   const pronto = faltando.length === 0 && redis.ok;
+  const prontoVos = faltandoVos.length === 0 && redis.ok;
 
   res.status(200).json({
     ok: true,
     pronto,
-    versao: '1.2.0',
+    prontoVos,
+    versao: '1.3.0',
     ts: new Date().toISOString(),
     config,
     faltando,
+    faltandoVos,
     alertas,
     aviso: pronto
       ? null

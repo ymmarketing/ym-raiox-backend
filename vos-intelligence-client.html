@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Carregando VOS Intelligence | YM</title>
+</head>
+<body style="font:15px/1.5 Inter,Arial,sans-serif;background:#f6f8fc;color:#0a2540;padding:40px">
+  <main style="max-width:620px;margin:auto;background:#fff;border:1px solid #e2e8f1;border-radius:18px;padding:28px">
+    <h1 style="font-size:22px">Carregando sua homologação…</h1>
+    <p id="status">Preparando o questionário VOS Intelligence.</p>
+  </main>
+  <script>
+    fetch('https://raw.githubusercontent.com/ymmarketing/ymnegocios/vos-intelligence-1-0-2026-09-21/raio-x-app-base.html',{cache:'no-store'})
+      .then(function(response){if(!response.ok)throw new Error('HTTP '+response.status);return response.text()})
+      .then(function(html){document.open();document.write(html);document.close()})
+      .catch(function(error){document.getElementById('status').textContent='Não foi possível carregar o questionário: '+error.message});
+  </script>
+</body>
+</html>
