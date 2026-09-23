@@ -7,7 +7,7 @@
 import crypto from 'node:crypto';
 import { aplicarCors } from '../../lib/cors.js';
 import { store, STATUS, temRedis } from '../../lib/store.js';
-import { refValida, erroSeguro, log, limitarTaxa, texto } from '../../lib/security.js';
+import { comparacaoSegura, refValida, erroSeguro, log, limitarTaxa, sha256Hex, texto } from '../../lib/security.js';
 import {
   gerarInterpretacaoRaiox,
   temChaveRaioxInterpretativo,
@@ -25,6 +25,9 @@ import { temVosAiRuntime } from '../../lib/vos-intelligence-diagnostic-v1.js';
 export const maxDuration = 300;
 
 const EXIGE_PAGAMENTO = String(process.env.REQUER_PAGAMENTO_RELATORIO ?? 'true').toLowerCase() !== 'false';
+const VOS_LIVE_AI_ENABLED = String(process.env.VOS_LIVE_AI_ENABLED || '').toLowerCase() === 'true';
+const VOS_PREVIEW_TOKEN_SALT = 'YM-VOS-PREVIEW-PAID-2026-09';
+const VOS_PREVIEW_TOKEN_HASH = String(process.env.VOS_PREVIEW_TEST_TOKEN_HASH || '47f77d8e434a5db6cbd87a91756a9b47d002670c71a050ffc8e68deb9062aa83').trim().toLowerCase();
 const REQUIRED_V2 = Array.from({ length: 18 }, (_, i) => `Q${String(i + 1).padStart(2, '0')}`);
 const MULTI_V2 = new Set(['Q06', 'Q10', 'Q13']);
 
@@ -38,6 +41,10 @@ function parseBody(req) {
 function clean(v, max = 5000) { return texto(v, max).trim(); }
 function cleanArray(v, maxItems = 30) { return (Array.isArray(v) ? v : []).slice(0, maxItems).map(x => clean(x, 500)).filter(Boolean); }
 function ipOf(req) { return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'desconhecido'; }
+function liveAiAuthorized(session) {
+  if (VOS_LIVE_AI_ENABLED) return true;
+  return process.env.VERCEL_ENV === 'preview' && session?.origem === 'vos_intelligence_preview';
+}
 
 async function approvedSession(ref) {
   if (!temRedis || !ref || !refValida(ref)) return null;
@@ -163,7 +170,14 @@ async function handleV2Get(req, res, action) {
     if (!temRedis) return res.status(503).json({ ok: false, error: 'Sessão indisponível.' });
     const rateOk = await limitarTaxa(store, `vos-preview-session:${ipOf(req)}`, 3);
     if (!rateOk) return res.status(429).json({ ok: false, error: 'Muitas sessões em sequência. Aguarde um minuto.' });
+    const token = clean(req.query?.token, 160);
+    const receivedHash = await sha256Hex(VOS_PREVIEW_TOKEN_SALT + token);
+    if (!token || !/^[a-f0-9]{64}$/.test(VOS_PREVIEW_TOKEN_HASH) || !comparacaoSegura(receivedHash, VOS_PREVIEW_TOKEN_HASH)) {
+      return res.status(403).json({ ok: false, error: 'Token de homologação inválido.' });
+    }
     const ref = `ym_raiox_${Date.now()}_mestre${crypto.randomBytes(6).toString('hex')}`;
+    const reserved = await store.marcarCodigoResgatado(`vos-preview:${VOS_PREVIEW_TOKEN_HASH}`, ref);
+    if (!reserved) return res.status(403).json({ ok: false, error: 'Este token de homologação já foi utilizado.' });
     const now = new Date().toISOString();
     await store.salvar(ref, {
       ref, status: STATUS.APPROVED, paymentId: null, customer: 'HOMOLOGAÇÃO VOS INTELLIGENCE', value: 0,
@@ -174,7 +188,17 @@ async function handleV2Get(req, res, action) {
   }
   if (action === 'status') {
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json({ ok: true, ai_configured: temVosAiRuntime, provider: process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_ENV ? 'vercel_ai_gateway' : 'openai_direct', model: VOS_REPORT_MODEL || OPENAI_MODEL, report_version: VOS_REPORT_VERSION });
+    return res.status(200).json({
+      ok: true,
+      ai_configured: temVosAiRuntime,
+      live_ai_enabled: VOS_LIVE_AI_ENABLED,
+      preview_paid_test_enabled: process.env.VERCEL_ENV === 'preview',
+      provider: process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_ENV ? 'vercel_ai_gateway' : 'openai_direct',
+      model: VOS_REPORT_MODEL || OPENAI_MODEL,
+      report_version: VOS_REPORT_VERSION,
+      timeout_ms: Number(process.env.OPENAI_VOS_TIMEOUT_MS || 240000),
+      max_output_tokens: Number(process.env.OPENAI_VOS_MAX_OUTPUT_TOKENS || 7000),
+    });
   }
   if (action !== 'draft' && action !== 'draft_proxy') return res.status(400).json({ ok: false, error: 'Ação inválida.' });
   const ref = clean(req.query?.ref, 220);
@@ -207,10 +231,10 @@ async function handleSaveDraft(req, res, body) {
 }
 
 async function handleUpload(req, res, body) {
-  if (!temVosAiRuntime) return res.status(503).json({ ok: false, error: 'A conexão de IA ainda não está configurada no backend.', code: 'AI_NOT_CONFIGURED' });
   const ref = clean(body.ref, 220);
   const session = await approvedSession(ref);
   if (!session) return res.status(403).json({ ok: false, error: 'Acesso não confirmado.' });
+  if (!temVosAiRuntime || !liveAiAuthorized(session)) return res.status(503).json({ ok: false, error: 'A conexão de IA ainda não está liberada neste ambiente.', code: 'AI_NOT_ENABLED' });
   if (session.raioxV2Report) return res.status(409).json({ ok: false, error: 'Este Raio-X já foi concluído e não aceita novos materiais.', code: 'RAIOX_LOCKED' });
   const rateOk = await limitarTaxa(store, `raiox-v2-upload:${ipOf(req)}`, 12);
   if (!rateOk) return res.status(429).json({ ok: false, error: 'Muitos envios. Aguarde um minuto.' });
@@ -241,12 +265,12 @@ async function handleUpload(req, res, body) {
 
 async function handleGenerateV2(req, res, body) {
   if (!temRedis) return res.status(503).json({ ok: false, error: 'Sessão indisponível no momento.' });
-  if (!temVosAiRuntime) return res.status(503).json({ ok: false, error: 'A conexão de IA ainda não está configurada no backend.', code: 'AI_NOT_CONFIGURED', model: VOS_REPORT_MODEL || OPENAI_MODEL });
   const rateOk = await limitarTaxa(store, `raiox-v2:${ipOf(req)}`, 5);
   if (!rateOk) return res.status(429).json({ ok: false, error: 'Muitas tentativas. Aguarde um minuto.' });
   const ref = clean(body.ref, 220);
   const session = await approvedSession(ref);
   if (!session) return res.status(403).json({ ok: false, error: 'Pagamento ou acesso ainda não confirmado.' });
+  if (!temVosAiRuntime || !liveAiAuthorized(session)) return res.status(503).json({ ok: false, error: 'A conexão de IA ainda não está liberada neste ambiente.', code: 'AI_NOT_ENABLED', model: VOS_REPORT_MODEL || OPENAI_MODEL });
 
   // UM PAGAMENTO = UMA GERAÇÃO DE IA.
   if (session.raioxV2Report) {
@@ -276,6 +300,13 @@ async function handleGenerateV2(req, res, body) {
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ ok: true, report: session.raioxV2Report, usage: session.raioxV2Cost || null, reused: true, incremental_cost_usd: 0 });
   }
+  if (['unknown', 'spent_no_report'].includes(session.raioxV2ChargeState)) {
+    return res.status(409).json({
+      ok: false,
+      error: 'A tentativa anterior pode ter consumido crédito. Para evitar cobrança duplicada, uma nova geração foi bloqueada para revisão.',
+      code: 'AI_CHARGE_REVIEW_REQUIRED',
+    });
+  }
 
   const allowedFileIds = new Set((session.raioxV2Uploads || []).map(x => x?.file_id).filter(Boolean));
   const intake = sanitizeIntake(body.intake || {}, allowedFileIds);
@@ -291,9 +322,35 @@ async function handleGenerateV2(req, res, body) {
     });
   }
 
+  const attemptId = crypto.randomUUID();
+  const generationLock = await store.adquirirTravaGeracao(ref, attemptId);
+  if (!generationLock) {
+    return res.status(409).json({
+      ok: false,
+      error: 'A análise deste Raio-X já está em processamento. Aguarde a conclusão.',
+      code: 'RAIOX_PROCESSING',
+      retry_after_seconds: 15,
+    });
+  }
+
   try {
+    const lockedSession = await approvedSession(ref);
+    if (!lockedSession) return res.status(403).json({ ok: false, error: 'Acesso não confirmado.' });
+    if (lockedSession.raioxV2Report) {
+      return res.status(200).json({ ok: true, report: lockedSession.raioxV2Report, usage: lockedSession.raioxV2Cost || null, reused: true, incremental_cost_usd: 0 });
+    }
+    if (lockedSession.raioxV2Status === 'processing' && lockedSession.raioxV2AttemptId && lockedSession.raioxV2AttemptId !== attemptId) {
+      await store.atualizar(ref, { raioxV2Status: 'review_required', raioxV2ChargeState: 'unknown' });
+      return res.status(409).json({
+        ok: false,
+        error: 'Uma tentativa anterior foi interrompida sem confirmação de cobrança. A repetição automática foi bloqueada.',
+        code: 'AI_CHARGE_REVIEW_REQUIRED',
+      });
+    }
     await store.atualizar(ref, {
       raioxV2Status: 'processing',
+      raioxV2AttemptId: attemptId,
+      raioxV2ChargeState: 'pending',
       raioxV2StartedAt: new Date().toISOString(),
       raioxV2Intake: {
         business_name: intake.business_name,
@@ -330,6 +387,7 @@ async function handleGenerateV2(req, res, body) {
       raioxV2Model: VOS_REPORT_MODEL,
       raioxV2Cost: result.cost,
       raioxV2Report: result.report,
+      raioxV2ChargeState: 'completed',
       raioxV2LockedAt: new Date().toISOString(),
       raioxV2CrmSyncStatus: 'not_applicable_vie_validation',
       raioxV2Audit: result.audit,
@@ -353,9 +411,26 @@ async function handleGenerateV2(req, res, body) {
     return res.status(200).json({ ok: true, report: result.report, usage: result.cost, reused: false });
   } catch (e) {
     const msg = clean(e?.message || 'Falha na análise.', 500);
-    log('error', 'Falha no Raio-X V2.2', { ref, motivo: msg });
-    await store.atualizar(ref, { raioxV2Status: 'error', raioxV2Error: msg, raioxV2ErrorAt: new Date().toISOString() }).catch(() => {});
-    return res.status(502).json({ ok: false, error: 'Não foi possível concluir a análise agora.', detail: process.env.NODE_ENV === 'development' ? msg : undefined });
+    const chargeState = ['safe_retry', 'unknown', 'spent_no_report'].includes(e?.charge_state) ? e.charge_state : 'safe_retry';
+    const reviewRequired = chargeState !== 'safe_retry';
+    log('error', 'Falha no VOS Intelligence', { ref, attempt_id: attemptId, motivo: msg, code: e?.code || null, charge_state: chargeState });
+    await store.atualizar(ref, {
+      raioxV2Status: reviewRequired ? 'review_required' : 'error',
+      raioxV2ChargeState: chargeState,
+      raioxV2ErrorCode: clean(e?.code || 'AI_ANALYSIS_FAILED', 100),
+      raioxV2Error: msg,
+      raioxV2ErrorAt: new Date().toISOString(),
+    }).catch(() => {});
+    return res.status(reviewRequired ? 409 : 502).json({
+      ok: false,
+      error: reviewRequired
+        ? 'A chamada foi interrompida após iniciar a análise. Uma nova tentativa foi bloqueada para evitar cobrança duplicada.'
+        : 'Não foi possível concluir a análise agora.',
+      code: reviewRequired ? 'AI_CHARGE_REVIEW_REQUIRED' : 'AI_ANALYSIS_FAILED',
+      detail: process.env.NODE_ENV === 'development' ? msg : undefined,
+    });
+  } finally {
+    await store.liberarTravaGeracao(ref, attemptId).catch(() => {});
   }
 }
 

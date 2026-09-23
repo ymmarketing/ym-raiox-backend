@@ -13,7 +13,7 @@
     "test:motor": "node testes/motor-vos-guardrails.mjs",
     "test:store": "node testes/store-concurrency.mjs",
     "test": "npm run test:local && npm run test:store && npm run test:motor",
-    "test:vos-intelligence": "node testes/vos-intelligence-v1.mjs && node testes/vos-intelligence-mapping-v1.mjs && node testes/vos-intelligence-intake-v1.mjs && node testes/vos-intelligence-diagnostic-v1.mjs && node testes/vos-intelligence-target-v1.mjs && node testes/vos-intelligence-playbook-v1.mjs && node testes/vos-intelligence-report-v1.mjs && node testes/vos-intelligence-e2e-fictional.mjs"
+    "test:vos-intelligence": "node testes/vos-intelligence-v1.mjs && node testes/vos-intelligence-mapping-v1.mjs && node testes/vos-intelligence-intake-v1.mjs && node testes/vos-intelligence-diagnostic-v1.mjs && node testes/vos-intelligence-target-v1.mjs && node testes/vos-intelligence-playbook-v1.mjs && node testes/vos-intelligence-report-v1.mjs && node testes/vos-intelligence-paid-safety.mjs && node testes/vos-intelligence-e2e-fictional.mjs"
   },
   "dependencies": {
     "@vercel/oidc": "^3.8.4"

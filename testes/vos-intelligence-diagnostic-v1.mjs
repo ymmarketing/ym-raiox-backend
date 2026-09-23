@@ -113,6 +113,30 @@ assert.equal(fallbackCalls[1].body.model,'gpt-5.6-terra');
 assert.equal(fallbackExecution.audit.provider,'openai_direct');
 assert.equal(fallbackExecution.audit.gateway_fallback_status,403);
 
+let overloadCalls=0;
+await assert.rejects(()=>runDiagnosticAnalysis({
+  envelope,api_key:'openai-test',gateway_key:'gateway-test',model:'gpt-5.6-terra',
+  fetch_impl:async()=>{overloadCalls++;return {ok:false,status:503,text:async()=>'{"error":"overloaded"}'};},
+}),error=>{
+  assert.equal(error.code,'AI_PROVIDER_HTTP_503');
+  assert.equal(error.charge_state,'unknown');
+  return true;
+});
+assert.equal(overloadCalls,1,'erro financeiramente incerto não pode disparar fallback automático');
+
+await assert.rejects(()=>runDiagnosticAnalysis({
+  envelope,api_key:'test-key',timeout_ms:1000,
+  fetch_impl:async(_url,options)=>new Promise((_resolve,reject)=>{
+    options.signal.addEventListener('abort',()=>{
+      const error=new Error('aborted');error.name='AbortError';reject(error);
+    },{once:true});
+  }),
+}),error=>{
+  assert.equal(error.code,'AI_REQUEST_TIMEOUT');
+  assert.equal(error.charge_state,'unknown');
+  return true;
+});
+
 const linkedEnvelope=buildDiagnosticEnvelope({
   questionnaire_version:'RX_CANONICO_2.0',business_name:'YM',company,metrics,
   answers:{Q01:'Consultoria estratégica',Q02:'Raio-X',Q03:'R$ 97',Q06:['Indicação','Instagram'],Q11:'Às vezes lembro e chamo',Q18:'Vendas recorrentes'},
