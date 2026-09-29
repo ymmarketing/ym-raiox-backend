@@ -40,10 +40,10 @@ Data: 29/09/2026. Escopo de referência: `YM_2_0_DOCUMENTACAO_MESTRE_DESENVOLVIM
 - Prévia HTML disponibilizada à usuária; submissão real fictícia executada no endpoint de produção, conferida no CRM e removida. Não há captura visual automatizada do site no domínio.
 - Rollback da interface: reverter a home no site. A função pública pode ser desativada separadamente; manter tabelas e registros reais para preservar dados. Uma retirada posterior exige exportar triagens, verificar dependências e aprovar uma migração destrutiva separada.
 
-## Revisão publicada
+## Publicação concluída
 
-- Backend: [PR #9](https://github.com/ymmarketing/ym-raiox-backend/pull/9), rascunho.
-- Site: [PR #17](https://github.com/ymmarketing/ymnegocios/pull/17), rascunho.
-- Os dois projetos Vercel do backend concluíram o build de preview do PR #9. Isso não executa a migração nem comprova o fluxo de triagem.
+- Backend: [PR #9](https://github.com/ymmarketing/ym-raiox-backend/pull/9), integrado ao `main`.
+- Site: [PR #17](https://github.com/ymmarketing/ymnegocios/pull/17), integrado ao `main`.
+- Os dois checks Vercel do backend passaram. O domínio `ymnegocios.com.br` respondeu 200 para a home, triagem, índice de conteúdos, artigo nacional e sitemap após publicação. O envio fictício validou o endpoint e foi removido.
 
-**Estado:** migração e função de triagem ativas no Supabase; publicação do site e merge dos PRs em andamento nesta fase. O restante do ecossistema YM 2.0 segue por fases.
+**Estado:** triagem e conteúdo inicial publicados no domínio e na organização ymmarketing. O restante do ecossistema YM 2.0 segue por fases.
