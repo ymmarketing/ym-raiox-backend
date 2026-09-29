@@ -1,0 +1,2 @@
+[functions.ym-public-triage]
+verify_jwt = false
