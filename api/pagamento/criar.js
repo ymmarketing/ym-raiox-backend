@@ -51,7 +51,7 @@ export default async function handler(req, res) {
 
   const ref = gerarRef();
   const valor = Number(process.env.PRODUCT_PRICE || 97);
-  const nomeProduto = process.env.PRODUCT_NAME || 'Raio-X Estratégico';
+  const nomeProduto = process.env.PRODUCT_NAME || 'Raio-X Digital YM';
   const descricao = `${nomeProduto} — YM Marketing & Negócios`;
   const safePayer = {
     customerName: nome || null,
