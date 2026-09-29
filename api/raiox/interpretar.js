@@ -91,6 +91,9 @@ function sanitizeDraft(d, session) {
   })).filter(x => x.file_id && uploaded.has(x.file_id));
   return {
     business_name: clean(d?.business_name, 220),
+    contact_name: clean(d?.contact_name, 180),
+    contact_email: clean(d?.contact_email, 180),
+    contact_whatsapp: clean(d?.contact_whatsapp, 40),
     answers, complements, links, images,
     q06main: clean(d?.q06main, 500),
     section: Number.isInteger(d?.section) ? Math.max(0, Math.min(6, d.section)) : 0,
@@ -113,7 +116,13 @@ function sanitizeIntake(raw, allowedFileIds) {
     id: `IMG${String(i + 1).padStart(2, '0')}`,
     name: clean(im?.name, 160), context: clean(im?.context, 1200), file_id: clean(im?.file_id, 120),
   })).filter(x => x.file_id && allowedFileIds.has(x.file_id));
-  return { business_name: clean(raw?.business_name, 220), answers, complements, links, images };
+  return {
+    business_name: clean(raw?.business_name, 220),
+    contact_name: clean(raw?.contact_name, 180),
+    contact_email: clean(raw?.contact_email, 180),
+    contact_whatsapp: clean(raw?.contact_whatsapp, 40),
+    answers, complements, links, images,
+  };
 }
 
 function decodeDataUrl(v) {
@@ -234,6 +243,9 @@ async function handleGenerateV2(req, res, body) {
       raioxV2StartedAt: new Date().toISOString(),
       raioxV2Intake: {
         business_name: intake.business_name,
+        contact_name: intake.contact_name,
+        contact_email: intake.contact_email,
+        contact_whatsapp: intake.contact_whatsapp,
         answers: intake.answers,
         complements: intake.complements,
         links: intake.links,
