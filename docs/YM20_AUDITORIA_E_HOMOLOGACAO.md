@@ -40,4 +40,10 @@ Data: 29/09/2026. Escopo de referência: `YM_2_0_DOCUMENTACAO_MESTRE_DESENVOLVIM
 - Verificação visual e submissão real ainda não executadas: navegador local indisponível e endpoint não implantado.
 - Rollback antes do deploy: descartar as branches. Depois do deploy, reverter a home no site e desativar a função pública; manter tabelas e registros para preservar dados. Uma retirada posterior exige exportar triagens, verificar dependências e aprovar uma migração destrutiva separada.
 
-**Estado:** código inicial pronto para revisão. Não homologado e não publicado.
+## Revisão publicada
+
+- Backend: [PR #9](https://github.com/ymmarketing/ym-raiox-backend/pull/9), rascunho.
+- Site: [PR #17](https://github.com/ymmarketing/ymnegocios/pull/17), rascunho.
+- Os dois projetos Vercel do backend concluíram o build de preview do PR #9. Isso não executa a migração nem comprova o fluxo de triagem.
+
+**Estado:** código inicial publicado em branches de revisão. Não homologado nem implantado em produção.
