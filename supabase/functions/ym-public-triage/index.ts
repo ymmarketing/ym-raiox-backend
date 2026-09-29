@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
       console.error("triage_storage_error", data?.code);
       return reply(503, { error: "storage_unavailable" }, origin);
     }
-    return reply(200, { ok: true, id: data.id, score: data.score, route: data.route }, origin);
+    return reply(200, { ok: true, id: data.id, score: data.score, route: data.route, known_contact: data.known_contact === true }, origin);
   } catch (error) {
     console.error("triage_network_error", error instanceof Error ? error.name : "unknown");
     return reply(503, { error: "storage_unavailable" }, origin);
