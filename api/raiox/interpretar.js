@@ -193,6 +193,21 @@ async function handleUpload(req, res, body) {
   }
 }
 
+export async function cleanupV2Uploads(ref, uploads) {
+  if (!Array.isArray(uploads) || !uploads.length) return;
+  const results = await Promise.all(uploads.map(async item => ({
+    item,
+    deleted: await deleteOpenAIFile(item.file_id),
+  })));
+  const remaining = results.filter(x => !x.deleted).map(x => x.item);
+  await store.atualizar(ref, {
+    raioxV2Uploads: remaining,
+    raioxV2FilesCleanupStatus: remaining.length ? 'pending_retry' : 'completed',
+    raioxV2FilesDeletedAt: remaining.length ? null : new Date().toISOString(),
+  });
+  if (remaining.length) log('warn', 'Exclusão de prints pendente; será tentada novamente ao reabrir o Raio-X.', { ref, remaining: remaining.length });
+}
+
 async function handleGenerateV2(req, res, body) {
   if (!temRedis) return res.status(503).json({ ok: false, error: 'Sessão indisponível no momento.' });
   if (!temOpenAI) return res.status(503).json({ ok: false, error: 'OpenAI ainda não configurada no backend.', code: 'OPENAI_NOT_CONFIGURED', model: OPENAI_MODEL_V22 || OPENAI_MODEL });
@@ -225,6 +240,10 @@ async function handleGenerateV2(req, res, body) {
         await store.atualizar(ref, { raioxV2CrmSyncStatus: 'error', raioxV2CrmSyncError: crmMsg, raioxV2CrmSyncErrorAt: new Date().toISOString() }).catch(() => {});
         log('warn', 'Retry de CRM do Raio-X V2.2 falhou, sem nova chamada de IA.', { ref, motivo: crmMsg });
       }
+    }
+    if (session.raioxV2Uploads?.length) {
+      try { await cleanupV2Uploads(ref, session.raioxV2Uploads); }
+      catch (e) { log('warn', 'Falha temporária ao retomar exclusão de prints.', { ref, motivo: clean(e?.message, 200) }); }
     }
     log('info', 'Requisição repetida devolveu relatório já salvo sem nova chamada de IA.', { ref });
     res.setHeader('Cache-Control', 'no-store');
@@ -265,9 +284,6 @@ async function handleGenerateV2(req, res, body) {
       raioxV2LinkAudit: result.linkAudit.map(x => ({ id: x.id, url: x.url, status: x.status, reason: x.reason })),
     });
 
-    await Promise.all(intake.images.map(x => deleteOpenAIFile(x.file_id)));
-    if (intake.images.length) await store.atualizar(ref, { raioxV2Uploads: [], raioxV2FilesDeletedAt: new Date().toISOString() });
-
     // CRM é pós-entrega e idempotente. Uma falha de CRM não bloqueia o relatório do cliente.
     try {
       const crm = await syncRaioxV22ToCrm({ ref, intake, report: result.report, session, completedAt: new Date().toISOString() });
@@ -282,6 +298,11 @@ async function handleGenerateV2(req, res, body) {
       const crmMsg = clean(e?.message || 'Falha no sync CRM.', 300);
       await store.atualizar(ref, { raioxV2CrmSyncStatus: 'error', raioxV2CrmSyncError: crmMsg, raioxV2CrmSyncErrorAt: new Date().toISOString() }).catch(() => {});
       log('warn', 'Raio-X V2.2 entregue, mas sync com CRM falhou.', { ref, motivo: crmMsg });
+    }
+
+    if (intake.images.length) {
+      try { await cleanupV2Uploads(ref, session.raioxV2Uploads || []); }
+      catch (e) { log('warn', 'Falha temporária na exclusão de prints após entrega.', { ref, motivo: clean(e?.message, 200) }); }
     }
 
     log('info', 'Raio-X V2.2 concluído e sessão bloqueada para nova geração', { ref, model: OPENAI_MODEL_V22, cost_usd: result.cost?.estimated_total_usd, links: intake.links.length, images: intake.images.length });
