@@ -47,3 +47,10 @@ Data: 29/09/2026. Escopo de referência: `YM_2_0_DOCUMENTACAO_MESTRE_DESENVOLVIM
 - Os dois checks Vercel do backend passaram. O domínio `ymnegocios.com.br` respondeu 200 para a home, triagem, índice de conteúdos, artigo nacional e sitemap após publicação. O envio fictício validou o endpoint e foi removido.
 
 **Estado:** triagem e conteúdo inicial publicados no domínio e na organização ymmarketing. O restante do ecossistema YM 2.0 segue por fases.
+
+## Correção de retorno à avaliação — 29/09/2026
+
+- Cadastros históricos com o mesmo email deixaram de impedir a avaliação. A função procura a empresa e prioriza a mesma pessoa/WhatsApp; se não houver correspondência segura, cria um contato separado, preservando os antigos.
+- Uma nova avaliação sempre ganha ID próprio e mantém o histórico. A resposta inclui `known_contact` para a página reconhecer o visitante, sem devolver dados pessoais do CRM.
+- O limite diário continua para contatos novos; visitantes já conhecidos podem refazer a avaliação. Migrações `20260929105820` e `20260929110048` aplicadas. Função pública v2 publicada.
+- Teste SQL transacional com empresas distintas, duplicidade histórica e mais de vinte novas avaliações do mesmo contato passou; todos os dados fictícios foram revertidos. A tentativa de enviar casos fictícios por HTTP em produção foi rejeitada pela revisão automática, portanto a confirmação HTTP com um usuário real ainda depende de novo uso da página.
