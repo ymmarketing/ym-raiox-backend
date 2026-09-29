@@ -31,10 +31,17 @@ Deno.serve(async (req) => {
   } catch { return reply(400, { error: "invalid_json" }, origin); }
   if (clean(body.website, 100)) return reply(200, { ok: true }, origin); // honeypot
   if (body.consent !== true) return reply(400, { error: "consent_required" }, origin);
+  if (!/^[0-9]{10,13}$/.test(clean(body.phone, 40).replace(/\D/g, ""))) return reply(400, { error: "invalid_phone" }, origin);
   const answers = body.answers;
   const source = body.source;
   if (!answers || typeof answers !== "object" || Array.isArray(answers) ||
     !source || typeof source !== "object" || Array.isArray(source)) return reply(400, { error: "invalid_payload" }, origin);
+  const channels = (answers as Record<string, unknown>).channels_selected;
+  const allowedChannels = new Set(["indicacao","instagram","facebook","linkedin","tiktok","site_busca","anuncios","parceiros","prospeccao_ativa","marketplaces","outro","nao_sei"]);
+  if (!Array.isArray(channels) || channels.length < 1 || channels.length > 12 ||
+    channels.some(channel => typeof channel !== "string" || !allowedChannels.has(channel)) ||
+    new Set(channels).size !== channels.length || (channels.includes("nao_sei") && channels.length > 1))
+    return reply(400, { error: "invalid_channels" }, origin);
   const url = Deno.env.get("SUPABASE_URL");
   let key = "";
   try { key = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}").default || ""; } catch { /* local legacy fallback */ }
