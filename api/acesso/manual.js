@@ -64,6 +64,23 @@ export const CODIGOS_HASH = [
   '73699940358398050681dc5b40c5b5decd2bf74bc683916dbc710b39c4d63ff9'
 ];
 
+/* Lote independente de códigos aleatórios (96 bits); somente hashes públicos.
+   Sem dependência de CODIGO_SALT configurado em outro ambiente. */
+export const CODIGOS_CONTINGENCIA_HASH = [
+  '2a3b88bc1c231b95bb4d3c5dc5cee8f115c6a84846ba0e2751a7246a64b66b65',
+  'b99573ab4bca269335afd89160cd6f97992a307e1fa23d874c0a34ae771f5f0a',
+  'a4a4a760635224362b2aa37e201e201b04b8a73c607d52a24c49fdd35e97a76e',
+  '2498ed73bec2537cd12978231a464096ebbb2925ad0701a7d15091b0dcf86ce1',
+  '574dbfb94add90825053f4deeb6cd1dd14d8a853845dcbb1066d601c0e085fc0',
+  '4a60f67b3d65a05e515db3776238d49b077bb8100c6eba5bd3209e8ab422c8e0',
+  'c551f059c467e2a3f0f61d11dee6313bb07786f18e6a1d5327a6f4681369efac',
+  '7511b184a039e07c830d77f322e2a8a0ced3cfdca33e240d6b1304c7c77d4a59',
+  'c2b81c28c217a37609e63254a67e7d04b22f7cdd2a2cc910de78ff60461c80a1',
+  'b48676ed2648d19317a6b6f96b7138a16ab6d90e0c9e2c8b2279e59bcb5fe927',
+  '78912854fed97a23cef70bf9d819ce7e95e1fe26c87f1eba43c84bc03e9dc618',
+  '893f3c8fe2ee9ade099fdd02f84b16bf4fd22bcedb0ba4e1e2da80b550bf46fa'
+];
+
 /* código-mestre: lido A CADA REQUISIÇÃO (não no import).
    Assim, apagar a variável na Vercel tem efeito imediato após o redeploy,
    e o comportamento é o mesmo em teste e em produção.
@@ -165,7 +182,9 @@ export default async function handler(req, res) {
   /* ───────── 3. código de cliente (uso único) ───────── */
   const hash = await sha256Hex(CODIGO_SALT + codigo);
 
-  if (!CODIGOS_HASH.includes(hash)) {
+  const hashContingencia = await sha256Hex(codigo);
+  const autorizado = CODIGOS_HASH.includes(hash) || CODIGOS_CONTINGENCIA_HASH.includes(hashContingencia);
+  if (!autorizado) {
     log('warn', 'Código de acesso não reconhecido.', { ip });
     return res.status(403).json({ ok: false, error: 'Código não reconhecido.' });
   }
@@ -173,10 +192,11 @@ export default async function handler(req, res) {
   /* resgate ATÔMICO: reserva o código antes de criar a ref.
      SET NX numa só operação — duas requisições simultâneas não passam ambas. */
   const ref = `ym_raiox_${Date.now()}_manual${Math.random().toString(16).slice(2, 10)}`;
-  const reservou = await store.marcarCodigoResgatado(hash, ref);
+  const codigoHash = CODIGOS_CONTINGENCIA_HASH.includes(hashContingencia) ? hashContingencia : hash;
+  const reservou = await store.marcarCodigoResgatado(codigoHash, ref);
 
   if (!reservou) {
-    log('warn', 'Código já utilizado.', { ip, hash: hash.slice(0, 8) });
+    log('warn', 'Código já utilizado.', { ip, hash: codigoHash.slice(0, 8) });
     return res.status(403).json({
       ok: false,
       error: 'Este código já foi utilizado.',
@@ -191,11 +211,11 @@ export default async function handler(req, res) {
     customer: 'ACESSO MANUAL',
     value: Number(process.env.PRODUCT_PRICE || 97),
     origem: 'codigo_manual',
-    codigoHash: hash.slice(0, 12),
+    codigoHash: codigoHash.slice(0, 12),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
 
-  log('info', 'Acesso liberado por código manual.', { ip, ref, hash: hash.slice(0, 8) });
+  log('info', 'Acesso liberado por código manual.', { ip, ref, hash: codigoHash.slice(0, 8) });
   return res.status(200).json({ ok: true, ref, status: STATUS.APPROVED, tipo: 'manual' });
 }
