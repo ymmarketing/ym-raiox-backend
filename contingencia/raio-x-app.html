@@ -30,8 +30,12 @@ function scoreColor(n){return scoreTone(n)==='critical'?'#B42318':scoreTone(n)==
 function iconFor(name){name=(name||'').toLowerCase();if(name.includes('clareza')||name.includes('oferta'))return'◎';if(name.includes('conteúdo')||name.includes('conteudo'))return'▤';if(name.includes('prova')||name.includes('autoridade'))return'★';if(name.includes('presença')||name.includes('presenca')||name.includes('descoberta'))return'⌕';if(name.includes('captação')||name.includes('captacao')||name.includes('convers'))return'↗';if(name.includes('tangib'))return'◆';return'•'}
 function enhance(win){
  const d=win.document;if(!d||!d.head)return;
+ // Relatório RX_REPORT_3.0 já vem com o visual final: só sincroniza o CRM.
+ const v3=d.querySelector('#reportBody .v3');if(v3){if(!v3.dataset.synced){v3.dataset.synced='1';try{d.title='Raio-X Digital | YM Marketing & Negócios'}catch(e){}syncCrm()}return}
+ // Relatórios RX_REPORT_2.2 já entregues mantêm o acabamento visual original.
+ const hero=d.querySelector('.reporthero');if(!hero||hero.dataset.finalized)return;hero.dataset.finalized='1';
  if(!d.getElementById('ym-final-patch')){const s=d.createElement('style');s.id='ym-final-patch';s.textContent=CSS;d.head.appendChild(s)}
- const hero=d.querySelector('.reporthero');if(!hero||hero.dataset.finalized)return;hero.dataset.finalized='1';syncCrm();
+ syncCrm();
  try{d.title='Raio-X Digital | YM Marketing & Negócios';const tag=d.querySelector('.tag');if(tag)tag.textContent='Raio-X Digital'}catch(e){}
  const lead=hero.querySelector('.leadgrid>div:first-child');
  function applyCompany(company){company=String(company||'').trim();if(!lead||!company||lead.querySelector('.companyKicker'))return;const old=lead.querySelector('.eyebrow');if(old)old.remove();const k=d.createElement('div');k.className='companyKicker';k.textContent='Raio-X Digital de '+company.toUpperCase();const r=d.createElement('div');r.className='readyLine';r.textContent='Sua análise está pronta';lead.prepend(r);lead.prepend(k)}
@@ -59,7 +63,8 @@ async function syncCrm(){
    let local={};try{local=JSON.parse(frame.contentWindow.localStorage.getItem('ym_rx_v22_'+ref)||'{}')}catch(e){}
    const draft={...local,...(data.draft||{})},report=data.report;
    const answers={};
-   for(let i=1;i<=18;i++){
+   const v3=report?.report_version==='RX_REPORT_3.0';
+   for(let i=1;i<=(v3?25:18);i++){
      const id='Q'+String(i).padStart(2,'0');
      const v=draft.answers?.[id];
      answers[id]=Array.isArray(v)?v.join(' | '):String(v??'').trim();
@@ -70,7 +75,7 @@ async function syncCrm(){
    const packet={
      source_product:'RAIO_X_DIGITAL',source_system:'ym_raiox_oficial',source_session_id:ref,
      client_ref:draft.business_name||null,
-     packet_version:'VOS_INTAKE_2.0',questionnaire_version:'RX_CANONICO_2.0',scoring_version:'RX_SCORE_2.2',report_version:'RX_REPORT_2.2',
+     packet_version:v3?'VOS_INTAKE_3.0':'VOS_INTAKE_2.0',questionnaire_version:v3?'RX_CANONICO_3.0':'RX_CANONICO_2.0',scoring_version:v3?'RX_SCORE_3.0':'RX_SCORE_2.2',report_version:v3?'RX_REPORT_3.0':'RX_REPORT_2.2',
      business_name:String(draft.business_name||'').trim(),payer:{name:String(draft.contact_name||'').trim(),email:String(draft.contact_email||'').trim(),phone:String(draft.contact_whatsapp||'').replace(/\D/g,'')},answers,
      complements:draft.complements||{},links:draft.links||[],
      score:{overall,status:'FINAL',coverage_pct:100},

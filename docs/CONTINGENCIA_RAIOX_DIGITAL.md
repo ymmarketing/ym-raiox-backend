@@ -2,7 +2,7 @@
 
 ## Escopo
 
-O link independente é `https://ym-raiox-backend.vercel.app/contingencia/`. A página de acesso, o questionário e o relatório ficam no domínio do backend. As 18 perguntas e o renderizador de relatório são uma cópia da versão oficial em `ymnegocios/raio-x-app-base.html`, com a mesma API `/api/raiox/interpretar-v2` e o mesmo score qualitativo de seis indicadores de 0 a 10. A VSL tem um campo de configuração vazio até que o vídeo oficial seja aprovado. O resultado termina com a reunião de esclarecimento incluída, por WhatsApp.
+O link independente é `https://ym-raiox-backend.vercel.app/contingencia/`. A página de acesso, o questionário e o relatório ficam no domínio do backend. As 25 perguntas e o renderizador de relatório são uma cópia da versão oficial em `ymnegocios/raio-x-app-base.html`, com a mesma API `/api/raiox/interpretar-v2` e o mesmo score qualitativo de seis indicadores de 0 a 10. A VSL tem um campo de configuração vazio até que o vídeo oficial seja aprovado. O resultado termina com a reunião de esclarecimento incluída, por WhatsApp.
 
 ## Atendimento
 
@@ -10,7 +10,7 @@ O link independente é `https://ym-raiox-backend.vercel.app/contingencia/`. A p�
 2. **Confirma no Asaas que o pagamento está recebido.** Um comprovante enviado pelo cliente, isoladamente, não libera o acesso.
 3. Envia ao cliente o link acima e **um** código ainda não usado da lista privada de contingência. Anota cliente, pagamento Asaas e código entregue. Não envia a lista completa.
 4. O cliente informa o código. O backend o resgata uma única vez, cria uma referência aprovada no Redis e abre `/contingencia/raio-x-app.html?ref=...`.
-5. O cliente preenche as 18 perguntas, pode anexar links/prints, recebe o relatório pelo mesmo motor do site e agenda a reunião de esclarecimento. Ele deve salvar o link com `ref` para retomar e consultar o resultado; o código não precisa ser usado novamente.
+5. O cliente preenche as 25 perguntas, pode anexar links/prints, recebe o relatório pelo mesmo motor do site e agenda a reunião de esclarecimento. Ele deve salvar o link com `ref` para retomar e consultar o resultado; o código não precisa ser usado novamente.
 
 ## Limites e sincronização
 
