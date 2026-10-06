@@ -23,13 +23,22 @@ import {
   REPORT_VERSION_V22,
   OPENAI_MODEL_V22,
 } from '../../lib/raiox-v2-report-v22.js';
+import {
+  gerarRaioxV3,
+  REPORT_VERSION_V3,
+  OPENAI_MODEL_V3,
+} from '../../lib/raiox-report-v3.js';
 import { syncRaioxV22ToCrm } from '../../lib/raiox-crm-sync.js';
 
 export const maxDuration = 60;
 
 const EXIGE_PAGAMENTO = String(process.env.REQUER_PAGAMENTO_RELATORIO ?? 'true').toLowerCase() !== 'false';
+// Questionário atual: 25 perguntas (RX_CANONICO_3.0). Rascunhos e gerações de 18 perguntas
+// (RX_CANONICO_2.0) continuam aceitos para não quebrar acessos abertos antes da mudança.
 const REQUIRED_V2 = Array.from({ length: 18 }, (_, i) => `Q${String(i + 1).padStart(2, '0')}`);
-const MULTI_V2 = new Set(['Q06', 'Q10', 'Q13']);
+const REQUIRED_V3 = Array.from({ length: 25 }, (_, i) => `Q${String(i + 1).padStart(2, '0')}`);
+const V3_ONLY = REQUIRED_V3.slice(18);
+const MULTI_V2 = new Set(['Q06', 'Q10', 'Q13', 'Q23']);
 
 function parseBody(req) {
   let body = req.body;
@@ -70,7 +79,7 @@ function responsesCanonicamenteCompletas(responses) {
 
 function sanitizeDraft(d, session) {
   const answers = {}, complements = {};
-  for (let i = 1; i <= 18; i++) {
+  for (let i = 1; i <= 25; i++) {
     const id = `Q${String(i).padStart(2, '0')}`;
     if (MULTI_V2.has(id)) {
       const a = cleanArray(d?.answers?.[id]);
@@ -103,10 +112,11 @@ function sanitizeDraft(d, session) {
 
 function sanitizeIntake(raw, allowedFileIds) {
   const answers = {};
-  for (const id of REQUIRED_V2) answers[id] = clean(raw?.answers?.[id], 5000);
+  const isV3 = V3_ONLY.some(id => clean(raw?.answers?.[id], 5000));
+  for (const id of (isV3 ? REQUIRED_V3 : REQUIRED_V2)) answers[id] = clean(raw?.answers?.[id], 5000);
   const complements = {};
   for (const [k, v] of Object.entries(raw?.complements || {})) {
-    if (/^Q(?:0[1-9]|1[0-8])$/.test(k) && clean(v, 3000)) complements[k] = clean(v, 3000);
+    if (/^Q(?:0[1-9]|1[0-9]|2[0-5])$/.test(k) && clean(v, 3000)) complements[k] = clean(v, 3000);
   }
   const links = (Array.isArray(raw?.links) ? raw.links : []).slice(0, 8).map((l, i) => ({
     id: `LINK${String(i + 1).padStart(2, '0')}`,
@@ -122,6 +132,7 @@ function sanitizeIntake(raw, allowedFileIds) {
     contact_email: clean(raw?.contact_email, 180),
     contact_whatsapp: clean(raw?.contact_whatsapp, 40),
     answers, complements, links, images,
+    questionnaire: isV3 ? 'RX_CANONICO_3.0' : 'RX_CANONICO_2.0',
   };
 }
 
@@ -136,7 +147,7 @@ function decodeDataUrl(v) {
 async function handleV2Get(req, res, action) {
   if (action === 'status') {
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json({ ok: true, openai_configured: temOpenAI, model: OPENAI_MODEL_V22 || OPENAI_MODEL, report_version: REPORT_VERSION_V22 });
+    return res.status(200).json({ ok: true, openai_configured: temOpenAI, model: OPENAI_MODEL_V22 || OPENAI_MODEL, report_version: REPORT_VERSION_V3 });
   }
   if (action !== 'draft' && action !== 'draft_proxy') return res.status(400).json({ ok: false, error: 'Ação inválida.' });
   const ref = clean(req.query?.ref, 220);
@@ -252,7 +263,8 @@ async function handleGenerateV2(req, res, body) {
 
   const allowedFileIds = new Set((session.raioxV2Uploads || []).map(x => x?.file_id).filter(Boolean));
   const intake = sanitizeIntake(body.intake || {}, allowedFileIds);
-  const missing = REQUIRED_V2.filter(id => !intake.answers[id]);
+  const isV3 = intake.questionnaire === 'RX_CANONICO_3.0';
+  const missing = (isV3 ? REQUIRED_V3 : REQUIRED_V2).filter(id => !intake.answers[id]);
   if (!intake.business_name) missing.unshift('BUSINESS_NAME');
   if (missing.length) return res.status(400).json({ ok: false, error: 'Existem respostas obrigatórias pendentes.', missing });
 
@@ -265,6 +277,7 @@ async function handleGenerateV2(req, res, body) {
         contact_name: intake.contact_name,
         contact_email: intake.contact_email,
         contact_whatsapp: intake.contact_whatsapp,
+        questionnaire: intake.questionnaire,
         answers: intake.answers,
         complements: intake.complements,
         links: intake.links,
@@ -272,12 +285,12 @@ async function handleGenerateV2(req, res, body) {
       },
     });
 
-    const result = await gerarRaioxV22(intake);
+    const result = isV3 ? await gerarRaioxV3(intake) : await gerarRaioxV22(intake);
     await store.atualizar(ref, {
       raioxV2Status: 'completed',
       raioxV2CompletedAt: new Date().toISOString(),
-      raioxV2ReportVersion: REPORT_VERSION_V22,
-      raioxV2Model: OPENAI_MODEL_V22,
+      raioxV2ReportVersion: isV3 ? REPORT_VERSION_V3 : REPORT_VERSION_V22,
+      raioxV2Model: isV3 ? OPENAI_MODEL_V3 : OPENAI_MODEL_V22,
       raioxV2Cost: result.cost,
       raioxV2Report: result.report,
       raioxV2LockedAt: new Date().toISOString(),
