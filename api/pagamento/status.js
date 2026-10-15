@@ -1,7 +1,8 @@
 /**
  * GET /api/pagamento/status?ref=<referencia>
  *
- * Devolve o status real, lido do storage (que só o webhook escreve).
+ * Devolve o status real, lido do storage (escrito pelo webhook ou pela
+ * conferência direta na API do Asaas, quando o webhook não chegou).
  * Se a referência não existir, devolve "pending" — NUNCA libera.
  *
  * Resposta:
@@ -12,6 +13,40 @@
 import { aplicarCors, exigirMetodo } from '../../lib/cors.js';
 import { store, STATUS, STATUS_VALIDOS, temRedis } from '../../lib/store.js';
 import { refValida, log } from '../../lib/security.js';
+import { consultarCobranca, traduzirStatus, temChaveAsaas } from '../../lib/asaas.js';
+
+/*
+ * Rede de segurança: se o webhook do Asaas não chegou (desativado, token
+ * errado, fila pausada), o status consulta a cobrança DIRETO na API do Asaas.
+ * Mesmas regras do webhook: só aprova se a API disser pago E o valor bater.
+ * No máximo uma consulta ao Asaas a cada 10 s por referência.
+ */
+async function conferirNoAsaas(ref, registro) {
+  if (!temChaveAsaas || !registro?.paymentId) return registro;
+  if (registro.status !== STATUS.PENDING && registro.status !== STATUS.AWAITING_PIX) return registro;
+  try {
+    const n = await store.incr(`ym:reconc:${ref}`, 10);
+    if (n > 1) return registro;
+    const real = await consultarCobranca(registro.paymentId);
+    let novo = traduzirStatus(real?.status);
+    if (real?.externalReference && real.externalReference !== ref) return registro;
+    const esperado = Number(process.env.PRODUCT_PRICE || 97);
+    if (novo === STATUS.APPROVED && real?.value != null && Math.abs(Number(real.value) - esperado) > 0.01) {
+      log('error', 'Conferência: valor pago diferente do esperado.', { ref, pago: real.value, esperado });
+      novo = STATUS.PENDING;
+    }
+    if (!STATUS_VALIDOS.includes(novo) || novo === registro.status) return registro;
+    const atualizado = await store.atualizar(ref, {
+      status: novo,
+      rawEvent: { event: 'RECONCILIACAO_STATUS', status: real?.status || null, billingType: real?.billingType || null },
+    });
+    log('info', 'Status atualizado pela conferência direta no Asaas.', { ref, status: novo });
+    return atualizado;
+  } catch (e) {
+    log('warn', 'Conferência no Asaas falhou; mantendo status.', { ref, motivo: e.message });
+    return registro;
+  }
+}
 
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return;
@@ -39,7 +74,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const registro = await store.buscar(ref);
+    const registro = await conferirNoAsaas(ref, await store.buscar(ref));
 
     if (!registro) {
       return res.status(200).json({
