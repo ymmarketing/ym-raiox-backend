@@ -27,6 +27,7 @@ export default async function handler(req, res) {
     asaasAmbiente: process.env.ASAAS_ENV || 'production',
     asaasBaseUrl: BASE_URL,
     asaasWebhookToken: Boolean(process.env.ASAAS_WEBHOOK_TOKEN),
+    resendEmailAcesso: Boolean((process.env.RESEND_API_KEY || '').trim()),
     anthropic: temChaveAnthropic,
     redis: temRedis,
     redisConectado: redis.ok,

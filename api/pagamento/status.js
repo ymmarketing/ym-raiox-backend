@@ -14,6 +14,7 @@ import { aplicarCors, exigirMetodo } from '../../lib/cors.js';
 import { store, STATUS, STATUS_VALIDOS, temRedis } from '../../lib/store.js';
 import { refValida, log } from '../../lib/security.js';
 import { consultarCobranca, traduzirStatus, temChaveAsaas } from '../../lib/asaas.js';
+import { enviarEmailAcesso } from '../../lib/email-acesso.js';
 
 /*
  * Rede de segurança: se o webhook do Asaas não chegou (desativado, token
@@ -74,7 +75,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const registro = await conferirNoAsaas(ref, await store.buscar(ref));
+    let registro = await conferirNoAsaas(ref, await store.buscar(ref));
+    // aprovado e ainda sem e-mail de acesso: envia o link pessoal (uma vez)
+    if (registro?.status === STATUS.APPROVED && !registro.emailAcessoEnviadoEm) {
+      registro = await enviarEmailAcesso(ref, registro);
+    }
 
     if (!registro) {
       return res.status(200).json({

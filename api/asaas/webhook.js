@@ -13,6 +13,7 @@
  * Sempre responde rápido. Status 2xx = Asaas considera entregue.
  */
 
+import { enviarEmailAcesso } from '../../lib/email-acesso.js';
 import { store, STATUS } from '../../lib/store.js';
 import {
   consultarCobranca,
@@ -160,6 +161,7 @@ export default async function handler(req, res) {
       },
     });
     if (paymentId) await store.indexarPagamento(paymentId, ref);
+    if (registro.status === STATUS.APPROVED) await enviarEmailAcesso(ref, registro);
 
     log('info', 'Status atualizado pelo webhook.', {
       ref,
